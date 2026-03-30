@@ -1,0 +1,11 @@
+{
+  "id": "2026-03-27-abc123",
+  "name": "auth-refactor",
+  "worktree_path": "/tmp/test-repo-sandbox-abc123",
+  "branch": "sandbox/2026-03-27-abc123",
+  "status": "running",
+  "log_path": "",
+  "created_at": "2026-03-27T14:00:00Z",
+  "started_at": "2026-03-27T14:30:00Z",
+  "completed_at": "0001-01-01T00:00:00Z"
+}
