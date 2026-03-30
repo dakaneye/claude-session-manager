@@ -1,0 +1,38 @@
+version: 2
+
+builds:
+  - main: ./cmd/cs
+    binary: cs
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+
+brews:
+  - repository:
+      owner: dakaneye
+      name: homebrew-tap
+    homepage: https://github.com/dakaneye/claude-session-manager
+    description: TUI + CLI for managing multiple Claude Code sessions
+    license: Apache-2.0
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
