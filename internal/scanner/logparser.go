@@ -34,6 +34,7 @@ type logEvent struct {
 	Subtype   string      `json:"subtype"`
 	Message   *logMessage `json:"message"`
 	Timestamp string      `json:"timestamp"`
+	PromptID  string      `json:"promptId"`
 }
 
 type logMessage struct {
@@ -143,9 +144,14 @@ func ParseLog(data []byte) LogSummary {
 					isError = true
 					summary.FailedToolResults++
 				}
-				// Capture user text messages for conversation tail.
-				if c.Type == "text" && c.Text != "" {
-					summary.ConversationTail = append(summary.ConversationTail, "You: "+c.Text)
+			}
+
+			// Capture user prompt text for conversation tail.
+			// Only include messages with promptId (real user input, not tool results).
+			if event.PromptID != "" {
+				userText := extractUserText(event.Message.Content, contents)
+				if userText != "" {
+					summary.ConversationTail = append(summary.ConversationTail, "You: "+userText)
 					if len(summary.ConversationTail) > maxConversationTail {
 						summary.ConversationTail = summary.ConversationTail[1:]
 					}
@@ -177,6 +183,23 @@ func ParseLog(data []byte) LogSummary {
 	summary.LastActivity = lastToolTime
 
 	return summary
+}
+
+// extractUserText gets the user's text from a message content field.
+// Content can be a JSON string, an array of objects, or an array with strings.
+func extractUserText(raw json.RawMessage, parsed []logContent) string {
+	// First try: check if content is a plain string (common for user prompts).
+	var topStr string
+	if err := json.Unmarshal(raw, &topStr); err == nil && len(topStr) > 3 {
+		return topStr
+	}
+	// Second try: look for text objects in parsed content.
+	for _, c := range parsed {
+		if c.Type == "text" && c.Text != "" {
+			return c.Text
+		}
+	}
+	return ""
 }
 
 func parseToolDetail(tool string, raw json.RawMessage) string {
