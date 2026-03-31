@@ -146,15 +146,13 @@ func ParseLog(data []byte) LogSummary {
 				}
 			}
 
-			// Capture user prompt text for conversation tail.
-			// Only include messages with promptId (real user input, not tool results).
-			if event.PromptID != "" {
-				userText := extractUserText(event.Message.Content, contents)
-				if userText != "" && !isSystemMessage(userText) {
-					summary.ConversationTail = append(summary.ConversationTail, "You: "+userText)
-					if len(summary.ConversationTail) > maxConversationTail {
-						summary.ConversationTail = summary.ConversationTail[1:]
-					}
+			// Capture user text for conversation tail.
+			// Include messages that have text content but aren't tool results or system noise.
+			userText := extractUserText(event.Message.Content, contents)
+			if userText != "" && !isSystemMessage(userText) && !isToolResultOnly(contents) {
+				summary.ConversationTail = append(summary.ConversationTail, "You: "+userText)
+				if len(summary.ConversationTail) > maxConversationTail {
+					summary.ConversationTail = summary.ConversationTail[1:]
 				}
 			}
 
@@ -183,6 +181,19 @@ func ParseLog(data []byte) LogSummary {
 	summary.LastActivity = lastToolTime
 
 	return summary
+}
+
+// isToolResultOnly returns true if the content only contains tool_result entries.
+func isToolResultOnly(contents []logContent) bool {
+	if len(contents) == 0 {
+		return false
+	}
+	for _, c := range contents {
+		if c.Type != "tool_result" {
+			return false
+		}
+	}
+	return true
 }
 
 // isSystemMessage detects auto-generated system messages that shouldn't
