@@ -80,10 +80,11 @@ func (d *detailPane) View() string {
 			if !a.Time.IsZero() {
 				timeStr = a.Time.Format("15:04")
 			}
-			tool := activityToolStyle.Render(a.Tool)
+			toolName := shortenToolName(a.Tool)
+			tool := activityToolStyle.Render(fmt.Sprintf("%-8s", toolName))
 			detail := filepath.Base(a.Detail)
 			detailRendered := activityDetailStyle.Render(detail)
-			line := fmt.Sprintf("  %s  %s  %s", activityTimeStyle.Render(timeStr), tool, detailRendered)
+			line := fmt.Sprintf("  %s  %s %s", activityTimeStyle.Render(timeStr), tool, detailRendered)
 			sections = append(sections, line)
 		}
 
@@ -126,6 +127,22 @@ func truncateMessage(msg string, maxWidth, maxLines int) string {
 	return strings.Join(lines, "\n  ")
 }
 
+// shortenToolName truncates long MCP tool names to a readable form.
+func shortenToolName(name string) string {
+	// MCP tools look like "mcp__notion__API-get-block-children" — show just the action part.
+	if strings.HasPrefix(name, "mcp__") {
+		parts := strings.SplitN(name, "__", 3)
+		if len(parts) == 3 {
+			// "mcp__notion__API-get-block-children" -> "notion"
+			return parts[1]
+		}
+	}
+	if len(name) > 8 {
+		return name[:8]
+	}
+	return name
+}
+
 func (d *detailPane) renderConversation() []string {
 	divider := detailSectionStyle.Render("── Conversation " + strings.Repeat("─", max(0, d.width-19)))
 	sections := []string{divider, ""}
@@ -135,33 +152,21 @@ func (d *detailPane) renderConversation() []string {
 		return sections
 	}
 
-	maxLines := d.height - 10 // Leave room for info + divider + padding.
-	if maxLines < 3 {
-		maxLines = 3
+	// Use most of the pane for conversation. Each message gets up to 2 lines.
+	maxMessages := (d.height - 8) / 3 // 2 lines per message + 1 blank line.
+	if maxMessages < 1 {
+		maxMessages = 1
 	}
 
-	// Show the last few messages that fit.
-	linesUsed := 0
-	startIdx := len(d.conversationTail) - 1
-	for startIdx >= 0 && linesUsed < maxLines {
-		msg := d.conversationTail[startIdx]
-		msgLines := strings.Count(msg, "\n") + 1
-		if msgLines > 5 {
-			msgLines = 5 // Each message truncated to 5 lines.
-		}
-		linesUsed += msgLines + 1 // +1 for blank line between messages.
-		if linesUsed <= maxLines {
-			startIdx--
-		}
+	start := 0
+	if len(d.conversationTail) > maxMessages {
+		start = len(d.conversationTail) - maxMessages
 	}
-	startIdx++ // Back up to last one that fit.
 
-	for i := startIdx; i < len(d.conversationTail); i++ {
-		msg := truncateMessage(d.conversationTail[i], d.width-4, 5)
+	for i := start; i < len(d.conversationTail); i++ {
+		msg := truncateMessage(d.conversationTail[i], d.width-4, 2)
 		sections = append(sections, "  "+detailValueStyle.Render(msg))
-		if i < len(d.conversationTail)-1 {
-			sections = append(sections, "")
-		}
+		sections = append(sections, "")
 	}
 
 	return sections

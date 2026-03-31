@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -474,7 +475,7 @@ func (a *App) tick() tea.Cmd {
 }
 
 func readLogTail(path string) ([]byte, error) {
-	const maxBytes = 64 * 1024
+	const maxBytes = 512 * 1024
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -492,7 +493,14 @@ func readLogTail(path string) ([]byte, error) {
 
 	buf := make([]byte, maxBytes)
 	_, err = f.ReadAt(buf, info.Size()-maxBytes)
-	return buf, err
+	if err != nil {
+		return nil, err
+	}
+	// Skip to first complete line (the read may start mid-JSON-line).
+	if idx := bytes.IndexByte(buf, '\n'); idx >= 0 {
+		buf = buf[idx+1:]
+	}
+	return buf, nil
 }
 
 // sessionLabel is the JSON structure for persisted session labels.

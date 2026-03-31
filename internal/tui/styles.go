@@ -50,8 +50,7 @@ var (
 				Width(7)
 
 	activityToolStyle = lipgloss.NewStyle().
-				Foreground(colorAccent).
-				Width(7)
+				Foreground(colorAccent)
 
 	activityDetailStyle = lipgloss.NewStyle().
 				Foreground(colorGray)
