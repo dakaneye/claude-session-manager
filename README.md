@@ -24,12 +24,6 @@ Managing 3-5 concurrent Claude Code sessions is painful. You lose track of what 
 
 ## Install
 
-### Homebrew
-
-```bash
-brew install dakaneye/tap/cs
-```
-
 ### Go
 
 ```bash

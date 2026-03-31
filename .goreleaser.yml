@@ -21,14 +21,6 @@ archives:
       - LICENSE
       - README.md
 
-brews:
-  - repository:
-      owner: dakaneye
-      name: homebrew-tap
-    homepage: https://github.com/dakaneye/claude-session-manager
-    description: TUI + CLI for managing multiple Claude Code sessions
-    license: MIT
-
 checksum:
   name_template: checksums.txt
 
