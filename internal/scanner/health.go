@@ -46,13 +46,13 @@ func checkRepeatedEdits(activity []ActivityEntry) []session.Diagnostic {
 	}
 	var diagnostics []session.Diagnostic
 	for file, count := range fileCounts {
-		if count >= 15 {
+		if count >= 30 {
 			diagnostics = append(diagnostics, session.Diagnostic{
 				Signal:   "repeated-edit",
 				Severity: session.SeverityCritical,
 				Detail:   fmt.Sprintf("%s edited %d times", file, count),
 			})
-		} else if count >= 10 {
+		} else if count >= 20 {
 			diagnostics = append(diagnostics, session.Diagnostic{
 				Signal:   "repeated-edit",
 				Severity: session.SeverityWarning,

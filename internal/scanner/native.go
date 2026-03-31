@@ -107,9 +107,9 @@ func (n *NativeSource) Scan(_ context.Context) ([]session.Session, error) {
 }
 
 // nativeLogPath computes the conversation JSONL path for a native session.
-// Claude encodes the cwd by replacing "/" with "-".
+// Claude encodes the cwd by replacing both "/" and "." with "-".
 func nativeLogPath(claudeDir, cwd, sessionID string) string {
-	encoded := strings.ReplaceAll(cwd, "/", "-")
+	encoded := strings.NewReplacer("/", "-", ".", "-").Replace(cwd)
 	return filepath.Join(claudeDir, "projects", encoded, sessionID+".jsonl")
 }
 

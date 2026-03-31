@@ -37,7 +37,36 @@ type logEvent struct {
 }
 
 type logMessage struct {
-	Content []logContent `json:"content"`
+	Content json.RawMessage `json:"content"`
+}
+
+// parseContent handles the content array which can contain both objects and strings.
+func parseContent(raw json.RawMessage) []logContent {
+	if len(raw) == 0 {
+		return nil
+	}
+	var contents []logContent
+	if err := json.Unmarshal(raw, &contents); err == nil {
+		return contents
+	}
+	// Try as array of mixed types (strings and objects).
+	var mixed []json.RawMessage
+	if err := json.Unmarshal(raw, &mixed); err != nil {
+		return nil
+	}
+	for _, item := range mixed {
+		var c logContent
+		if err := json.Unmarshal(item, &c); err == nil {
+			contents = append(contents, c)
+			continue
+		}
+		// Try as plain string.
+		var s string
+		if err := json.Unmarshal(item, &s); err == nil {
+			contents = append(contents, logContent{Type: "text", Text: s})
+		}
+	}
+	return contents
 }
 
 type logContent struct {
@@ -84,7 +113,8 @@ func ParseLog(data []byte) LogSummary {
 			if event.Message == nil {
 				continue
 			}
-			for _, c := range event.Message.Content {
+			contents := parseContent(event.Message.Content)
+			for _, c := range contents {
 				if c.Type == "tool_use" && c.Name != "" {
 					summary.TotalTools++
 					summary.ToolCounts[c.Name]++
@@ -93,7 +123,7 @@ func ParseLog(data []byte) LogSummary {
 				}
 				if c.Type == "text" && c.Text != "" {
 					summary.LastMessage = c.Text
-					summary.ConversationTail = append(summary.ConversationTail, c.Text)
+					summary.ConversationTail = append(summary.ConversationTail, "Claude: "+c.Text)
 					if len(summary.ConversationTail) > maxConversationTail {
 						summary.ConversationTail = summary.ConversationTail[1:]
 					}
@@ -106,11 +136,19 @@ func ParseLog(data []byte) LogSummary {
 				continue
 			}
 
+			contents := parseContent(event.Message.Content)
 			isError := false
-			for _, c := range event.Message.Content {
+			for _, c := range contents {
 				if c.Type == "tool_result" && c.IsError {
 					isError = true
 					summary.FailedToolResults++
+				}
+				// Capture user text messages for conversation tail.
+				if c.Type == "text" && c.Text != "" {
+					summary.ConversationTail = append(summary.ConversationTail, "You: "+c.Text)
+					if len(summary.ConversationTail) > maxConversationTail {
+						summary.ConversationTail = summary.ConversationTail[1:]
+					}
 				}
 			}
 
