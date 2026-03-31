@@ -1,0 +1,65 @@
+package main
+
+import (
+	"fmt"
+	"os"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/dakaneye/claude-session-manager/internal/scanner"
+	"github.com/dakaneye/claude-session-manager/internal/tui"
+	"github.com/spf13/cobra"
+)
+
+func newRootCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "cs",
+		Short: "Manage multiple Claude Code sessions",
+		Long:  "TUI + CLI for managing interactive and autonomous Claude Code sessions.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			sc := buildScanner()
+			app := tui.NewApp(sc)
+			p := tea.NewProgram(app)
+			if _, err := p.Run(); err != nil {
+				return fmt.Errorf("run TUI: %w", err)
+			}
+			return nil
+		},
+		SilenceUsage: true,
+	}
+
+	cmd.AddCommand(newLsCommand())
+	cmd.AddCommand(newPeekCommand())
+	cmd.AddCommand(newStopCommand())
+	cmd.AddCommand(newLabelCommand())
+	cmd.AddCommand(newCleanCommand())
+	cmd.AddCommand(newNewCommand())
+	cmd.AddCommand(newVersionCommand())
+
+	return cmd
+}
+
+func newVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version",
+		Run: func(cmd *cobra.Command, _ []string) {
+			cmd.Println("cs", version)
+		},
+	}
+}
+
+func buildScanner() *scanner.Scanner {
+	home, _ := os.UserHomeDir()
+	cwd, _ := os.Getwd()
+
+	return &scanner.Scanner{
+		Sources: []scanner.SessionSource{
+			&scanner.SandboxSource{
+				RepoPaths: []string{cwd},
+			},
+			&scanner.NativeSource{
+				ClaudeDir: home + "/.claude",
+			},
+		},
+	}
+}

@@ -1,12 +1,11 @@
 package main
 
-import (
-	"fmt"
-	"os"
-)
+import "os"
 
 var version = "dev"
 
 func main() {
-	fmt.Fprintf(os.Stderr, "cs %s\n", version)
+	if err := newRootCommand().Execute(); err != nil {
+		os.Exit(1)
+	}
 }
