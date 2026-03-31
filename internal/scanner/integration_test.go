@@ -30,21 +30,31 @@ func TestIntegration_FullScan(t *testing.T) {
 		"started_at":    "2026-03-27T14:30:00Z",
 	}
 	data, _ := json.MarshalIndent(sandboxJSON, "", "  ")
-	os.WriteFile(filepath.Join(sessDir, "2026-03-27-test01.json"), data, 0o644)
+	if err := os.WriteFile(filepath.Join(sessDir, "2026-03-27-test01.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Set up log for sandbox session.
 	logDir := filepath.Join(tmpDir, "logs")
-	os.MkdirAll(logDir, 0o755)
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	logFixture, _ := os.ReadFile(filepath.Join("..", "..", "testdata", "sandbox", "logs", "2026-03-27-abc123.log"))
-	os.WriteFile(filepath.Join(logDir, "2026-03-27-test01.log"), logFixture, 0o644)
+	if err := os.WriteFile(filepath.Join(logDir, "2026-03-27-test01.log"), logFixture, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Set up PLAN.md in worktree.
-	os.WriteFile(filepath.Join(sandboxDir, "PLAN.md"), []byte("# Refactor auth middleware\n\nSome plan."), 0o644)
+	if err := os.WriteFile(filepath.Join(sandboxDir, "PLAN.md"), []byte("# Refactor auth middleware\n\nSome plan."), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Set up native session.
 	claudeDir := filepath.Join(tmpDir, "claude")
 	nativeSessDir := filepath.Join(claudeDir, "sessions")
-	os.MkdirAll(nativeSessDir, 0o755)
+	if err := os.MkdirAll(nativeSessDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	nativeJSON := map[string]any{
 		"pid":        99999999,
 		"sessionId":  "native-test-uuid",
@@ -54,7 +64,9 @@ func TestIntegration_FullScan(t *testing.T) {
 		"entrypoint": "cli",
 	}
 	nativeData, _ := json.MarshalIndent(nativeJSON, "", "  ")
-	os.WriteFile(filepath.Join(nativeSessDir, "99999999.json"), nativeData, 0o644)
+	if err := os.WriteFile(filepath.Join(nativeSessDir, "99999999.json"), nativeData, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	// Build scanner with both sources.
 	sc := &Scanner{

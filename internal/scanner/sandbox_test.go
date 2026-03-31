@@ -86,8 +86,12 @@ func TestSandboxSource_SkipsSymlinks(t *testing.T) {
 
 	fixture, _ := os.ReadFile(filepath.Join("..", "..", "testdata", "sandbox", "sessions", "2026-03-27-abc123.json"))
 	realFile := filepath.Join(sessDir, "2026-03-27-abc123.json")
-	os.WriteFile(realFile, fixture, 0o644)
-	os.Symlink(realFile, filepath.Join(sessDir, "auth-refactor.json"))
+	if err := os.WriteFile(realFile, fixture, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realFile, filepath.Join(sessDir, "auth-refactor.json")); err != nil {
+		t.Fatal(err)
+	}
 
 	src := &SandboxSource{RepoPaths: []string{tmpDir}}
 	sessions, err := src.Scan(context.Background())

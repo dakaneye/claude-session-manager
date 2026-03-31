@@ -15,7 +15,7 @@ func newRootCommand() *cobra.Command {
 		Use:   "cs",
 		Short: "Manage multiple Claude Code sessions",
 		Long:  "TUI + CLI for managing interactive and autonomous Claude Code sessions.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			sc := buildScanner()
 			app := tui.NewApp(sc)
 			p := tea.NewProgram(app)

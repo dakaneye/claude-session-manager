@@ -26,9 +26,10 @@ func newCleanCommand() *cobra.Command {
 				if !all && s.Status != session.StatusSuccess && s.Status != session.StatusFailed {
 					continue
 				}
-				if s.Source == session.SourceSandbox {
+				switch s.Source {
+				case session.SourceSandbox:
 					cmd.Printf("Clean sandbox session %s with: claude-sandbox clean --session %s\n", s.ID, s.ID)
-				} else if s.Source == session.SourceNative {
+				case session.SourceNative:
 					cmd.Printf("Native session %s (pid %d) - remove stale session file manually if process is dead\n", s.ID, s.PID)
 				}
 				cleaned++

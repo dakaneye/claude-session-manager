@@ -197,7 +197,7 @@ func readLogTail(path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	buf := make([]byte, maxBytes)
 	_, err = f.ReadAt(buf, info.Size()-maxBytes)
