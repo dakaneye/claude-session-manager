@@ -19,9 +19,10 @@ import (
 const tickInterval = 3 * time.Second
 
 type tickMsg struct {
-	sessions   []session.Session
-	activities map[string][]scanner.ActivityEntry
-	err        error
+	sessions     []session.Session
+	activities   map[string][]scanner.ActivityEntry
+	lastMessages map[string]string
+	err          error
 }
 
 type execFinishedMsg struct {
@@ -46,13 +47,14 @@ const (
 
 // App is the root Bubbletea model.
 type App struct {
-	scanner    *scanner.Scanner
-	sessions   sessionList
-	detail     detailPane
-	statusbar  statusBar
-	width      int
-	height     int
-	activities map[string][]scanner.ActivityEntry
+	scanner      *scanner.Scanner
+	sessions     sessionList
+	detail       detailPane
+	statusbar    statusBar
+	width        int
+	height       int
+	activities   map[string][]scanner.ActivityEntry
+	lastMessages map[string]string
 
 	// Interactive input state.
 	mode          inputMode
@@ -66,11 +68,12 @@ type App struct {
 // NewApp creates a TUI application backed by the given scanner.
 func NewApp(sc *scanner.Scanner) *App {
 	return &App{
-		scanner:    sc,
-		sessions:   newSessionList(),
-		detail:     newDetailPane(),
-		statusbar:  newStatusBar(),
-		activities: make(map[string][]scanner.ActivityEntry),
+		scanner:      sc,
+		sessions:     newSessionList(),
+		detail:       newDetailPane(),
+		statusbar:    newStatusBar(),
+		activities:   make(map[string][]scanner.ActivityEntry),
+		lastMessages: make(map[string]string),
 	}
 }
 
@@ -93,6 +96,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			a.sessions.SetSessions(msg.sessions)
 			a.activities = msg.activities
+			a.lastMessages = msg.lastMessages
 			a.updateDetail()
 		}
 		// Clear expired flash messages.
@@ -136,6 +140,9 @@ func (a *App) View() tea.View {
 			name = sel.ID
 		}
 		rightTitle = " " + name + " "
+		if a.detail.peeking {
+			rightTitle = " " + name + " [PEEK] "
+		}
 	}
 
 	leftPane := paneStyle.
@@ -220,16 +227,34 @@ func (a *App) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case keyNew:
 		return a, a.launchClaude()
+	case keyAttach:
+		if sel := a.sessions.Selected(); sel != nil && sel.Source == session.SourceNative {
+			a.setFlash(fmt.Sprintf("Session running in: %s (PID %d)", sel.Dir, sel.PID))
+		} else if sel != nil {
+			a.setFlash("Attach only works for native sessions")
+		}
 	}
 	return a, nil
 }
 
+func isEnter(msg tea.KeyPressMsg) bool {
+	return msg.Code == tea.KeyEnter || msg.Code == tea.KeyReturn || msg.String() == "enter"
+}
+
+func isEscape(msg tea.KeyPressMsg) bool {
+	return msg.Code == tea.KeyEscape || msg.String() == "esc" || msg.String() == "escape"
+}
+
+func isBackspace(msg tea.KeyPressMsg) bool {
+	return msg.Code == tea.KeyBackspace || msg.String() == "backspace"
+}
+
 func (a *App) handleLabelKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "escape":
+	switch {
+	case isEscape(msg):
 		a.mode = modeNormal
 		a.labelInput = ""
-	case "enter":
+	case isEnter(msg):
 		if sel := a.sessions.Selected(); sel != nil && a.labelInput != "" {
 			if err := writeLabel(sel.ID, a.labelInput); err != nil {
 				a.setFlash("Label error: " + err.Error())
@@ -239,7 +264,7 @@ func (a *App) handleLabelKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		a.mode = modeNormal
 		a.labelInput = ""
-	case "backspace":
+	case isBackspace(msg):
 		if len(a.labelInput) > 0 {
 			a.labelInput = a.labelInput[:len(a.labelInput)-1]
 		}
@@ -252,8 +277,11 @@ func (a *App) handleLabelKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (a *App) handleConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "y":
+	switch {
+	case isEscape(msg):
+		a.mode = modeNormal
+		a.confirmAction = confirmNone
+	case msg.String() == "y":
 		switch a.confirmAction {
 		case confirmStop:
 			a.executeStop()
@@ -262,7 +290,7 @@ func (a *App) handleConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		a.mode = modeNormal
 		a.confirmAction = confirmNone
-	case "n", "esc", "escape":
+	case msg.String() == "n":
 		a.mode = modeNormal
 		a.confirmAction = confirmNone
 	}
@@ -392,11 +420,12 @@ func (a *App) updateLayout() {
 func (a *App) updateDetail() {
 	sel := a.sessions.Selected()
 	if sel == nil {
-		a.detail.SetSession(nil, nil)
+		a.detail.SetSession(nil, nil, "")
 		return
 	}
 	activity := a.activities[sel.ID]
-	a.detail.SetSession(sel, activity)
+	lastMessage := a.lastMessages[sel.ID]
+	a.detail.SetSession(sel, activity, lastMessage)
 }
 
 func (a *App) tick() tea.Cmd {
@@ -410,16 +439,20 @@ func (a *App) tick() tea.Cmd {
 		}
 
 		activities := make(map[string][]scanner.ActivityEntry)
+		lastMessages := make(map[string]string)
 		for _, s := range sessions {
 			if s.LogPath != "" {
 				if data, err := readLogTail(s.LogPath); err == nil {
 					summary := scanner.ParseLog(data)
 					activities[s.ID] = summary.RecentActivity
+					if summary.LastMessage != "" {
+						lastMessages[s.ID] = summary.LastMessage
+					}
 				}
 			}
 		}
 
-		return tickMsg{sessions: sessions, activities: activities}
+		return tickMsg{sessions: sessions, activities: activities, lastMessages: lastMessages}
 	})
 }
 

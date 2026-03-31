@@ -10,11 +10,12 @@ import (
 )
 
 type detailPane struct {
-	session  *session.Session
-	activity []scanner.ActivityEntry
-	width    int
-	height   int
-	peeking  bool
+	session     *session.Session
+	activity    []scanner.ActivityEntry
+	lastMessage string
+	width       int
+	height      int
+	peeking     bool
 }
 
 func newDetailPane() detailPane {
@@ -26,9 +27,10 @@ func (d *detailPane) SetSize(w, h int) {
 	d.height = h
 }
 
-func (d *detailPane) SetSession(s *session.Session, activity []scanner.ActivityEntry) {
+func (d *detailPane) SetSession(s *session.Session, activity []scanner.ActivityEntry, lastMessage string) {
 	d.session = s
 	d.activity = activity
+	d.lastMessage = lastMessage
 }
 
 func (d *detailPane) TogglePeek() {
@@ -46,6 +48,14 @@ func (d *detailPane) View() string {
 	if !d.peeking {
 		sections = append(sections, d.renderInfo(s))
 		sections = append(sections, "")
+
+		if d.lastMessage != "" {
+			msgDivider := detailSectionStyle.Render("── Last Message " + strings.Repeat("─", max(0, d.width-19)))
+			sections = append(sections, msgDivider, "")
+			msg := truncateMessage(d.lastMessage, d.width-4, 3)
+			sections = append(sections, "  "+detailValueStyle.Render(msg))
+			sections = append(sections, "")
+		}
 	}
 
 	divider := detailSectionStyle.Render("── Recent Activity " + strings.Repeat("─", max(0, d.width-22)))
@@ -99,6 +109,22 @@ func (d *detailPane) View() string {
 		rendered++
 	}
 	return content
+}
+
+// truncateMessage limits a message to maxLines lines, each at most maxWidth runes.
+func truncateMessage(msg string, maxWidth, maxLines int) string {
+	lines := strings.SplitN(msg, "\n", maxLines+1)
+	if len(lines) > maxLines {
+		lines = lines[:maxLines]
+		lines[maxLines-1] += "..."
+	}
+	for i, line := range lines {
+		runes := []rune(line)
+		if len(runes) > maxWidth {
+			lines[i] = string(runes[:maxWidth-3]) + "..."
+		}
+	}
+	return strings.Join(lines, "\n  ")
 }
 
 func (d *detailPane) renderInfo(s *session.Session) string {

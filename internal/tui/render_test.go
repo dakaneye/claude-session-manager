@@ -144,7 +144,7 @@ func TestDetailPane_RendersSessionInfo(t *testing.T) {
 
 	sess := testSessions()[0]
 	activity := testActivity()
-	d.SetSession(&sess, activity)
+	d.SetSession(&sess, activity, "")
 
 	output := d.View()
 
@@ -212,7 +212,7 @@ func TestDetailPane_RendersDiagnostics(t *testing.T) {
 	d.SetSize(60, 30)
 
 	sess := testSessions()[1] // The one with diagnostics.
-	d.SetSession(&sess, nil)
+	d.SetSession(&sess, nil, "")
 
 	output := d.View()
 
@@ -237,7 +237,7 @@ func TestDetailPane_CriticalDiagnosticUsesErrorIcon(t *testing.T) {
 			{Signal: "test-loop", Severity: session.SeverityCritical, Detail: "tests failing 3 times"},
 		},
 	}
-	d.SetSession(&sess, nil)
+	d.SetSession(&sess, nil, "")
 
 	output := d.View()
 
@@ -255,7 +255,7 @@ func TestDetailPane_PeekMode(t *testing.T) {
 
 	sess := testSessions()[0]
 	activity := testActivity()
-	d.SetSession(&sess, activity)
+	d.SetSession(&sess, activity, "")
 
 	normalView := d.View()
 	d.TogglePeek()
@@ -292,7 +292,7 @@ func TestStatusBar_RendersKeyBindings(t *testing.T) {
 
 	output := sb.View()
 
-	bindings := []string{"navigate", "peek", "new", "stop", "clean", "label", "help", "quit"}
+	bindings := []string{"navigate", "peek", "new", "attach", "stop", "clean", "label", "help", "quit"}
 	for _, b := range bindings {
 		if !strings.Contains(output, b) {
 			t.Errorf("missing keybinding hint %q in status bar", b)
@@ -311,6 +311,7 @@ func TestStatusBar_HelpViewShowsAllBindings(t *testing.T) {
 		"Navigate sessions",
 		"Toggle peek",
 		"New session",
+		"Attach to native session",
 		"Stop selected session",
 		"Clean completed/failed",
 		"Label selected session",

@@ -13,18 +13,29 @@ const (
 	keyStop
 	keyClean
 	keyLabel
+	keyAttach
 	keyHelp
 	keyQuit
 )
 
 func parseKey(msg tea.KeyPressMsg) keyAction {
-	switch msg.String() {
-	case "up", "k":
-		return keyUp
-	case "down", "j":
-		return keyDown
-	case "enter":
+	// Check special keys by code first.
+	switch msg.Code {
+	case tea.KeyEnter:
 		return keyPeek
+	case tea.KeyUp:
+		return keyUp
+	case tea.KeyDown:
+		return keyDown
+	case tea.KeyEscape:
+		return keyNone
+	}
+	// Then check printable keys by text.
+	switch msg.String() {
+	case "k":
+		return keyUp
+	case "j":
+		return keyDown
 	case "n":
 		return keyNew
 	case "s":
@@ -33,9 +44,13 @@ func parseKey(msg tea.KeyPressMsg) keyAction {
 		return keyClean
 	case "l":
 		return keyLabel
+	case "a":
+		return keyAttach
 	case "?":
 		return keyHelp
-	case "q", "ctrl+c":
+	case "q":
+		return keyQuit
+	case "ctrl+c":
 		return keyQuit
 	default:
 		return keyNone

@@ -14,6 +14,7 @@ type LogSummary struct {
 	LastActivity      time.Time
 	RecentActivity    []ActivityEntry
 	FailedToolResults int
+	LastMessage       string // Last assistant text content
 }
 
 // ActivityEntry is a single tool invocation extracted from the log.
@@ -40,6 +41,7 @@ type logContent struct {
 	Name    string          `json:"name"`
 	Input   json.RawMessage `json:"input"`
 	Content string          `json:"content"`
+	Text    string          `json:"text"`
 	IsError bool            `json:"is_error"`
 }
 
@@ -84,6 +86,9 @@ func ParseLog(data []byte) LogSummary {
 					summary.ToolCounts[c.Name]++
 					pendingTool = c.Name
 					pendingDetail = parseToolDetail(c.Name, c.Input)
+				}
+				if c.Type == "text" && c.Text != "" {
+					summary.LastMessage = c.Text
 				}
 			}
 
