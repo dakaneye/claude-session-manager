@@ -2,7 +2,12 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -19,6 +24,26 @@ type tickMsg struct {
 	err        error
 }
 
+type execFinishedMsg struct {
+	err error
+}
+
+type confirmAction int
+
+const (
+	confirmNone confirmAction = iota
+	confirmStop
+	confirmClean
+)
+
+type inputMode int
+
+const (
+	modeNormal inputMode = iota
+	modeLabel
+	modeConfirm
+)
+
 // App is the root Bubbletea model.
 type App struct {
 	scanner    *scanner.Scanner
@@ -28,6 +53,14 @@ type App struct {
 	width      int
 	height     int
 	activities map[string][]scanner.ActivityEntry
+
+	// Interactive input state.
+	mode          inputMode
+	labelInput    string
+	confirmAction confirmAction
+	confirmCount  int // for clean: number of sessions to clean
+	flashMsg      string
+	flashExpiry   time.Time
 }
 
 // NewApp creates a TUI application backed by the given scanner.
@@ -62,7 +95,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.activities = msg.activities
 			a.updateDetail()
 		}
+		// Clear expired flash messages.
+		if a.flashMsg != "" && time.Now().After(a.flashExpiry) {
+			a.flashMsg = ""
+		}
 		return a, a.tick()
+
+	case execFinishedMsg:
+		return a, nil
 	}
 
 	return a, nil
@@ -111,7 +151,20 @@ func (a *App) View() tea.View {
 	rightPane = paneTitleStyle.Render(rightTitle) + "\n" + rightPane
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
-	statusLine := a.statusbar.View()
+
+	var statusLine string
+	switch a.mode {
+	case modeLabel:
+		statusLine = a.statusbar.RenderInput("Label: ", a.labelInput)
+	case modeConfirm:
+		statusLine = a.statusbar.RenderConfirm(a.confirmPrompt())
+	default:
+		if a.flashMsg != "" && time.Now().Before(a.flashExpiry) {
+			statusLine = a.statusbar.RenderFlash(a.flashMsg)
+		} else {
+			statusLine = a.statusbar.View()
+		}
+	}
 
 	view := lipgloss.JoinVertical(lipgloss.Left, body, statusLine)
 
@@ -121,6 +174,17 @@ func (a *App) View() tea.View {
 }
 
 func (a *App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch a.mode {
+	case modeLabel:
+		return a.handleLabelKey(msg)
+	case modeConfirm:
+		return a.handleConfirmKey(msg)
+	default:
+		return a.handleNormalKey(msg)
+	}
+}
+
+func (a *App) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	action := parseKey(msg)
 	switch action {
 	case keyQuit:
@@ -135,8 +199,185 @@ func (a *App) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.detail.TogglePeek()
 	case keyHelp:
 		a.statusbar.ToggleHelp()
+	case keyLabel:
+		if a.sessions.Selected() != nil {
+			a.mode = modeLabel
+			a.labelInput = ""
+		}
+	case keyStop:
+		if sel := a.sessions.Selected(); sel != nil {
+			a.mode = modeConfirm
+			a.confirmAction = confirmStop
+		}
+	case keyClean:
+		count := a.countCleanable()
+		if count > 0 {
+			a.mode = modeConfirm
+			a.confirmAction = confirmClean
+			a.confirmCount = count
+		} else {
+			a.setFlash("No sessions to clean")
+		}
+	case keyNew:
+		return a, a.launchClaude()
 	}
 	return a, nil
+}
+
+func (a *App) handleLabelKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "escape":
+		a.mode = modeNormal
+		a.labelInput = ""
+	case "enter":
+		if sel := a.sessions.Selected(); sel != nil && a.labelInput != "" {
+			if err := writeLabel(sel.ID, a.labelInput); err != nil {
+				a.setFlash("Label error: " + err.Error())
+			} else {
+				a.setFlash("Labeled: " + a.labelInput)
+			}
+		}
+		a.mode = modeNormal
+		a.labelInput = ""
+	case "backspace":
+		if len(a.labelInput) > 0 {
+			a.labelInput = a.labelInput[:len(a.labelInput)-1]
+		}
+	default:
+		if msg.Text != "" {
+			a.labelInput += msg.Text
+		}
+	}
+	return a, nil
+}
+
+func (a *App) handleConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y":
+		switch a.confirmAction {
+		case confirmStop:
+			a.executeStop()
+		case confirmClean:
+			a.executeClean()
+		}
+		a.mode = modeNormal
+		a.confirmAction = confirmNone
+	case "n", "esc", "escape":
+		a.mode = modeNormal
+		a.confirmAction = confirmNone
+	}
+	return a, nil
+}
+
+func (a *App) confirmPrompt() string {
+	switch a.confirmAction {
+	case confirmStop:
+		sel := a.sessions.Selected()
+		if sel == nil {
+			return "Stop? (y/n)"
+		}
+		name := sel.Name
+		if name == "" {
+			name = sel.ID
+		}
+		return fmt.Sprintf("Stop %s? (y/n)", name)
+	case confirmClean:
+		return fmt.Sprintf("Clean %d sessions? (y/n)", a.confirmCount)
+	default:
+		return "(y/n)"
+	}
+}
+
+func (a *App) executeStop() {
+	sel := a.sessions.Selected()
+	if sel == nil {
+		return
+	}
+	if sel.Source == session.SourceNative && sel.PID > 0 {
+		proc, err := os.FindProcess(sel.PID)
+		if err != nil {
+			a.setFlash("Process not found")
+			return
+		}
+		if err := proc.Signal(syscall.SIGTERM); err != nil {
+			a.setFlash("Stop error: " + err.Error())
+			return
+		}
+		a.setFlash("Sent SIGTERM to PID " + fmt.Sprint(sel.PID))
+	} else {
+		a.setFlash("Stop not supported for " + string(sel.Source) + " sessions")
+	}
+}
+
+func (a *App) countCleanable() int {
+	count := 0
+	for _, s := range a.sessions.sessions {
+		if isCleanable(s) {
+			count++
+		}
+	}
+	return count
+}
+
+func isCleanable(s session.Session) bool {
+	switch s.Status {
+	case session.StatusSuccess, session.StatusFailed:
+		return true
+	case session.StatusIdle:
+		// Native idle sessions with dead process are cleanable.
+		if s.Source == session.SourceNative && s.PID > 0 {
+			return !isAlive(s.PID)
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+func isAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
+}
+
+func (a *App) executeClean() {
+	cleaned := 0
+	home, err := os.UserHomeDir()
+	if err != nil {
+		a.setFlash("Clean error: " + err.Error())
+		return
+	}
+	sessDir := filepath.Join(home, ".claude", "sessions")
+
+	for _, s := range a.sessions.sessions {
+		if !isCleanable(s) {
+			continue
+		}
+		if s.Source == session.SourceNative && s.PID > 0 {
+			pidFile := filepath.Join(sessDir, fmt.Sprintf("%d.json", s.PID))
+			if err := os.Remove(pidFile); err == nil {
+				cleaned++
+			}
+		}
+	}
+	a.setFlash(fmt.Sprintf("Cleaned %d sessions", cleaned))
+}
+
+func (a *App) launchClaude() tea.Cmd {
+	c := exec.Command("claude")
+	return tea.ExecProcess(c, func(err error) tea.Msg {
+		return execFinishedMsg{err: err}
+	})
+}
+
+func (a *App) setFlash(msg string) {
+	a.flashMsg = msg
+	a.flashExpiry = time.Now().Add(5 * time.Second)
 }
 
 func (a *App) updateLayout() {
@@ -202,4 +443,25 @@ func readLogTail(path string) ([]byte, error) {
 	buf := make([]byte, maxBytes)
 	_, err = f.ReadAt(buf, info.Size()-maxBytes)
 	return buf, err
+}
+
+// sessionLabel is the JSON structure for persisted session labels.
+type sessionLabel struct {
+	Label string `json:"label"`
+}
+
+func writeLabel(sessionID, label string) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("get home dir: %w", err)
+	}
+	dir := filepath.Join(home, ".claude", "session-labels")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create label dir: %w", err)
+	}
+	data, err := json.Marshal(sessionLabel{Label: label})
+	if err != nil {
+		return fmt.Errorf("marshal label: %w", err)
+	}
+	return os.WriteFile(filepath.Join(dir, sessionID+".json"), data, 0o644)
 }

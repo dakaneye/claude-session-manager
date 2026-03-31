@@ -249,6 +249,41 @@ func TestDetailPane_CriticalDiagnosticUsesErrorIcon(t *testing.T) {
 	}
 }
 
+func TestDetailPane_PeekMode(t *testing.T) {
+	d := newDetailPane()
+	d.SetSize(80, 30)
+
+	sess := testSessions()[0]
+	activity := testActivity()
+	d.SetSession(&sess, activity)
+
+	normalView := d.View()
+	d.TogglePeek()
+	peekView := d.View()
+
+	t.Run("peek mode removes info section", func(t *testing.T) {
+		if !strings.Contains(normalView, "Source:") {
+			t.Error("normal view should contain Source:")
+		}
+		if strings.Contains(peekView, "Source:") {
+			t.Error("peek view should not contain Source:")
+		}
+	})
+
+	t.Run("peek mode shows full paths", func(t *testing.T) {
+		if !strings.Contains(peekView, "/workspace/internal/auth/middleware.go") {
+			t.Error("peek view should show full paths")
+		}
+	})
+
+	t.Run("peek mode shows error markers", func(t *testing.T) {
+		// The third activity entry has IsError=true.
+		if !strings.Contains(peekView, "\u2716") {
+			t.Error("peek view should show error marker for failed tool results")
+		}
+	})
+}
+
 // --- Status Bar Rendering ---
 
 func TestStatusBar_RendersKeyBindings(t *testing.T) {
@@ -286,6 +321,36 @@ func TestStatusBar_HelpViewShowsAllBindings(t *testing.T) {
 		if !strings.Contains(output, cmd) {
 			t.Errorf("missing help entry %q", cmd)
 		}
+	}
+}
+
+func TestStatusBar_RenderInput(t *testing.T) {
+	sb := newStatusBar()
+	sb.SetWidth(80)
+	output := sb.RenderInput("Label: ", "my-task")
+	if !strings.Contains(output, "Label:") {
+		t.Error("missing prompt in input render")
+	}
+	if !strings.Contains(output, "my-task") {
+		t.Error("missing input text in input render")
+	}
+}
+
+func TestStatusBar_RenderConfirm(t *testing.T) {
+	sb := newStatusBar()
+	sb.SetWidth(80)
+	output := sb.RenderConfirm("Stop session-1? (y/n)")
+	if !strings.Contains(output, "Stop session-1?") {
+		t.Error("missing confirm prompt")
+	}
+}
+
+func TestStatusBar_RenderFlash(t *testing.T) {
+	sb := newStatusBar()
+	sb.SetWidth(80)
+	output := sb.RenderFlash("Labeled: my-task")
+	if !strings.Contains(output, "Labeled: my-task") {
+		t.Error("missing flash message")
 	}
 }
 

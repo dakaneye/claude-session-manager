@@ -61,3 +61,21 @@ func (sb *statusBar) helpView() string {
 	}
 	return strings.Join(help, "\n")
 }
+
+// RenderInput renders the status bar in text input mode.
+func (sb *statusBar) RenderInput(prompt, text string) string {
+	content := " " + statusBarKeyStyle.Render(prompt) + statusBarStyle.Render(text+"_")
+	return lipgloss.NewStyle().Width(sb.width).Render(content)
+}
+
+// RenderConfirm renders the status bar in confirmation mode.
+func (sb *statusBar) RenderConfirm(prompt string) string {
+	content := " " + statusBarKeyStyle.Render(prompt)
+	return lipgloss.NewStyle().Width(sb.width).Render(content)
+}
+
+// RenderFlash renders a temporary flash message.
+func (sb *statusBar) RenderFlash(msg string) string {
+	content := " " + lipgloss.NewStyle().Foreground(colorAccent).Render(msg)
+	return lipgloss.NewStyle().Width(sb.width).Render(content)
+}

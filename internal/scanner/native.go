@@ -76,7 +76,7 @@ func (n *NativeSource) Scan(_ context.Context) ([]session.Session, error) {
 			PID:       ns.PID,
 			StartedAt: time.UnixMilli(ns.StartedAt),
 			Health:    session.HealthGreen,
-			Task:      filepath.Base(ns.Cwd),
+			Name:      filepath.Base(ns.Cwd),
 		}
 
 		if alive {
@@ -86,10 +86,31 @@ func (n *NativeSource) Scan(_ context.Context) ([]session.Session, error) {
 			}
 		}
 
+		// Try to find and parse conversation JSONL for activity data.
+		logPath := nativeLogPath(claudeDir, ns.Cwd, ns.SessionID)
+		if _, statErr := os.Stat(logPath); statErr == nil {
+			sess.LogPath = logPath
+			if logData, readErr := os.ReadFile(logPath); readErr == nil {
+				summary := ParseLog(logData)
+				if !summary.LastActivity.IsZero() {
+					sess.LastActivity = summary.LastActivity
+				}
+				sess.Diagnostics = EvaluateHealth(summary.RecentActivity, time.Now())
+				sess.Health = session.WorstHealth(sess.Diagnostics)
+			}
+		}
+
 		sessions = append(sessions, sess)
 	}
 
 	return sessions, nil
+}
+
+// nativeLogPath computes the conversation JSONL path for a native session.
+// Claude encodes the cwd by replacing "/" with "-".
+func nativeLogPath(claudeDir, cwd, sessionID string) string {
+	encoded := strings.ReplaceAll(cwd, "/", "-")
+	return filepath.Join(claudeDir, "projects", encoded, sessionID+".jsonl")
 }
 
 func isProcessAlive(pid int) bool {

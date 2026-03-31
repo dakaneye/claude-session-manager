@@ -43,8 +43,10 @@ func (d *detailPane) View() string {
 	s := d.session
 	var sections []string
 
-	sections = append(sections, d.renderInfo(s))
-	sections = append(sections, "")
+	if !d.peeking {
+		sections = append(sections, d.renderInfo(s))
+		sections = append(sections, "")
+	}
 
 	divider := detailSectionStyle.Render("── Recent Activity " + strings.Repeat("─", max(0, d.width-22)))
 	sections = append(sections, divider, "")
@@ -63,8 +65,17 @@ func (d *detailPane) View() string {
 			timeStr = a.Time.Format("15:04")
 		}
 		tool := activityToolStyle.Render(a.Tool)
-		detail := activityDetailStyle.Render(filepath.Base(a.Detail))
-		line := fmt.Sprintf("  %s  %s  %s", activityTimeStyle.Render(timeStr), tool, detail)
+
+		// In peek mode, show full paths and error markers; otherwise show basename.
+		detail := a.Detail
+		if !d.peeking {
+			detail = filepath.Base(detail)
+		}
+		if d.peeking && a.IsError {
+			detail = "✖ " + detail
+		}
+		detailRendered := activityDetailStyle.Render(detail)
+		line := fmt.Sprintf("  %s  %s  %s", activityTimeStyle.Render(timeStr), tool, detailRendered)
 		sections = append(sections, line)
 	}
 

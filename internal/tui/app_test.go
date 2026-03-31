@@ -12,7 +12,8 @@ import (
 func keyPress(code rune) tea.KeyPressMsg {
 	msg := tea.KeyPressMsg{Code: code}
 	// Printable characters need Text set for String() to return the char.
-	if code > 0 && code < 128 && code != tea.KeyEnter && code != tea.KeyUp && code != tea.KeyDown {
+	// Exclude control/special keys.
+	if code >= 32 && code < 128 {
 		msg.Text = string(code)
 	}
 	return msg
@@ -82,6 +83,41 @@ func TestApp_KeyNavigation(t *testing.T) {
 		app = updated.(*App)
 		if !app.detail.peeking {
 			t.Error("peeking = false, want true")
+		}
+	})
+
+	t.Run("l enters label mode", func(t *testing.T) {
+		updated, _ := app.Update(keyPress('l'))
+		app = updated.(*App)
+		if app.mode != modeLabel {
+			t.Errorf("mode = %d, want modeLabel (%d)", app.mode, modeLabel)
+		}
+	})
+
+	t.Run("escape exits label mode", func(t *testing.T) {
+		updated, _ := app.Update(keyPress(tea.KeyEscape))
+		app = updated.(*App)
+		if app.mode != modeNormal {
+			t.Errorf("mode = %d, want modeNormal", app.mode)
+		}
+	})
+
+	t.Run("s enters confirm mode", func(t *testing.T) {
+		updated, _ := app.Update(keyPress('s'))
+		app = updated.(*App)
+		if app.mode != modeConfirm {
+			t.Errorf("mode = %d, want modeConfirm (%d)", app.mode, modeConfirm)
+		}
+		if app.confirmAction != confirmStop {
+			t.Errorf("confirmAction = %d, want confirmStop", app.confirmAction)
+		}
+	})
+
+	t.Run("n in confirm cancels", func(t *testing.T) {
+		updated, _ := app.Update(keyPress('n'))
+		app = updated.(*App)
+		if app.mode != modeNormal {
+			t.Errorf("mode = %d, want modeNormal after cancel", app.mode)
 		}
 	})
 }
