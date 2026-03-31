@@ -16,7 +16,10 @@ builds:
 
 archives:
   - format: tar.gz
-    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
 
 brews:
   - repository:
@@ -24,7 +27,7 @@ brews:
       name: homebrew-tap
     homepage: https://github.com/dakaneye/claude-session-manager
     description: TUI + CLI for managing multiple Claude Code sessions
-    license: Apache-2.0
+    license: MIT
 
 checksum:
   name_template: checksums.txt
@@ -36,3 +39,16 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^ci:"
+      - "^chore:"
+  groups:
+    - title: Features
+      regexp: "^feat"
+    - title: Bug Fixes
+      regexp: "^fix"
+
+release:
+  github:
+    owner: dakaneye
+    name: claude-session-manager
+  draft: false
+  prerelease: auto
