@@ -13,12 +13,10 @@ import (
 )
 
 type nativeSession struct {
-	PID        int    `json:"pid"`
-	SessionID  string `json:"sessionId"`
-	Cwd        string `json:"cwd"`
-	StartedAt  int64  `json:"startedAt"`
-	Kind       string `json:"kind"`
-	Entrypoint string `json:"entrypoint"`
+	PID       int    `json:"pid"`
+	SessionID string `json:"sessionId"`
+	Cwd       string `json:"cwd"`
+	StartedAt int64  `json:"startedAt"`
 }
 
 // NativeSource discovers interactive Claude Code sessions.

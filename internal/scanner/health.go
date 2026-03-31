@@ -18,25 +18,6 @@ func EvaluateHealth(activity []ActivityEntry, now time.Time) []session.Diagnosti
 	return diagnostics
 }
 
-// CheckContextWindow checks if context window usage is too high.
-func CheckContextWindow(usage float64) []session.Diagnostic {
-	if usage >= 0.75 {
-		return []session.Diagnostic{{
-			Signal:   "high-context",
-			Severity: session.SeverityCritical,
-			Detail:   fmt.Sprintf("context window %.0f%% used", usage*100),
-		}}
-	}
-	if usage >= 0.65 {
-		return []session.Diagnostic{{
-			Signal:   "high-context",
-			Severity: session.SeverityWarning,
-			Detail:   fmt.Sprintf("context window %.0f%% used", usage*100),
-		}}
-	}
-	return nil
-}
-
 func checkRepeatedEdits(activity []ActivityEntry) []session.Diagnostic {
 	fileCounts := make(map[string]int)
 	for _, a := range activity {

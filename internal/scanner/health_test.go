@@ -130,37 +130,6 @@ func TestEvaluateHealth(t *testing.T) {
 	})
 }
 
-func TestCheckContextWindow(t *testing.T) {
-	t.Run("65% usage triggers warning", func(t *testing.T) {
-		diagnostics := CheckContextWindow(0.65)
-		found := findDiagnostic(diagnostics, "high-context")
-		if found == nil {
-			t.Fatal("expected high-context diagnostic")
-		}
-		if found.Severity != session.SeverityWarning {
-			t.Errorf("severity = %s, want warning", found.Severity)
-		}
-	})
-
-	t.Run("75% usage triggers critical", func(t *testing.T) {
-		diagnostics := CheckContextWindow(0.75)
-		found := findDiagnostic(diagnostics, "high-context")
-		if found == nil {
-			t.Fatal("expected high-context diagnostic")
-		}
-		if found.Severity != session.SeverityCritical {
-			t.Errorf("severity = %s, want critical", found.Severity)
-		}
-	})
-
-	t.Run("50% usage is healthy", func(t *testing.T) {
-		diagnostics := CheckContextWindow(0.50)
-		if len(diagnostics) != 0 {
-			t.Errorf("expected no diagnostics, got %+v", diagnostics)
-		}
-	})
-}
-
 func findDiagnostic(diagnostics []session.Diagnostic, signal string) *session.Diagnostic {
 	for _, d := range diagnostics {
 		if d.Signal == signal {

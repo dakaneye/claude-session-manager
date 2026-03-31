@@ -45,7 +45,7 @@ make verify    # build + vet + lint (0 issues) + test -race + tidy
 
 ## Dependencies
 
-Only 4 direct dependencies:
+3 direct dependencies:
 - `charm.land/bubbletea/v2` — TUI framework
 - `charm.land/lipgloss/v2` — Terminal styling
 - `github.com/spf13/cobra` — CLI framework

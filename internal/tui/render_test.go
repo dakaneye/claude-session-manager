@@ -318,7 +318,7 @@ func TestStatusBar_HelpViewShowsAllBindings(t *testing.T) {
 
 	commands := []string{
 		"Navigate sessions",
-		"Toggle peek",
+		"Toggle peek (conversation view)",
 		"New session",
 		"Attach to native session",
 		"Stop selected session",

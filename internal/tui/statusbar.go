@@ -51,7 +51,7 @@ func (sb *statusBar) View() string {
 func (sb *statusBar) helpView() string {
 	help := []string{
 		"  " + statusBarKeyStyle.Render("↑/↓ or j/k") + "  Navigate sessions",
-		"  " + statusBarKeyStyle.Render("enter") + "      Toggle peek (scrollable log)",
+		"  " + statusBarKeyStyle.Render("enter") + "      Toggle peek (conversation view)",
 		"  " + statusBarKeyStyle.Render("n") + "          New session",
 		"  " + statusBarKeyStyle.Render("a") + "          Attach to native session",
 		"  " + statusBarKeyStyle.Render("s") + "          Stop selected session",

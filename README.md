@@ -73,7 +73,6 @@ Sessions get green/yellow/red health indicators based on:
 | Same file edited repeatedly | 20+ times | 30+ times |
 | Tests failing in loop | — | 3+ consecutive |
 | No activity | 5 min | 10 min |
-| Context window usage | 65%+ | 75%+ |
 | Identical command repeated | 3 in a row | — |
 
 ## Development
