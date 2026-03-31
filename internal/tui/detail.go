@@ -45,17 +45,20 @@ func (d *detailPane) View() string {
 	s := d.session
 	var sections []string
 
-	if !d.peeking {
-		sections = append(sections, d.renderInfo(s))
-		sections = append(sections, "")
+	sections = append(sections, d.renderInfo(s))
+	sections = append(sections, "")
 
-		if d.lastMessage != "" {
-			msgDivider := detailSectionStyle.Render("── Last Message " + strings.Repeat("─", max(0, d.width-19)))
-			sections = append(sections, msgDivider, "")
-			msg := truncateMessage(d.lastMessage, d.width-4, 3)
-			sections = append(sections, "  "+detailValueStyle.Render(msg))
-			sections = append(sections, "")
+	if d.lastMessage != "" {
+		msgDivider := detailSectionStyle.Render("── Last Message " + strings.Repeat("─", max(0, d.width-19)))
+		sections = append(sections, msgDivider, "")
+		// In peek mode, show more lines of the last message.
+		maxLines := 3
+		if d.peeking {
+			maxLines = 8
 		}
+		msg := truncateMessage(d.lastMessage, d.width-4, maxLines)
+		sections = append(sections, "  "+detailValueStyle.Render(msg))
+		sections = append(sections, "")
 	}
 
 	divider := detailSectionStyle.Render("── Recent Activity " + strings.Repeat("─", max(0, d.width-22)))

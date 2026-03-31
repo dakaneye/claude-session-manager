@@ -88,6 +88,9 @@ func (sl *sessionList) renderSession(idx int, s session.Session) []string {
 
 	line1 := fmt.Sprintf("  %s %s %s", dot, name, lipgloss.NewStyle().Foreground(colorDim).Render(age))
 	meta := fmt.Sprintf("%s · %s", s.Source, s.Status)
+	if s.Task != "" {
+		meta += " · " + s.Task
+	}
 	line2 := sessionMetaStyle.Render(meta)
 
 	return []string{line1, line2, ""}

@@ -261,12 +261,12 @@ func TestDetailPane_PeekMode(t *testing.T) {
 	d.TogglePeek()
 	peekView := d.View()
 
-	t.Run("peek mode removes info section", func(t *testing.T) {
+	t.Run("peek mode keeps info section", func(t *testing.T) {
 		if !strings.Contains(normalView, "Source:") {
 			t.Error("normal view should contain Source:")
 		}
-		if strings.Contains(peekView, "Source:") {
-			t.Error("peek view should not contain Source:")
+		if !strings.Contains(peekView, "Source:") {
+			t.Error("peek view should also contain Source:")
 		}
 	})
 

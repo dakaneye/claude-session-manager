@@ -10,13 +10,12 @@ import (
 func TestEvaluateHealth(t *testing.T) {
 	now := time.Now()
 
-	t.Run("repeated file edits triggers warning", func(t *testing.T) {
-		activity := []ActivityEntry{
-			{Time: now.Add(-4 * time.Minute), Tool: "Edit", Detail: "auth.go"},
-			{Time: now.Add(-3 * time.Minute), Tool: "Edit", Detail: "auth.go"},
-			{Time: now.Add(-2 * time.Minute), Tool: "Edit", Detail: "auth.go"},
-			{Time: now.Add(-1 * time.Minute), Tool: "Edit", Detail: "auth.go"},
-			{Time: now, Tool: "Edit", Detail: "auth.go"},
+	t.Run("10 edits on same file triggers warning", func(t *testing.T) {
+		var activity []ActivityEntry
+		for i := 0; i < 10; i++ {
+			activity = append(activity, ActivityEntry{
+				Time: now.Add(time.Duration(-10+i) * time.Minute), Tool: "Edit", Detail: "auth.go",
+			})
 		}
 		diagnostics := EvaluateHealth(activity, now)
 		found := findDiagnostic(diagnostics, "repeated-edit")
@@ -28,11 +27,11 @@ func TestEvaluateHealth(t *testing.T) {
 		}
 	})
 
-	t.Run("8 edits on same file triggers critical", func(t *testing.T) {
+	t.Run("15 edits on same file triggers critical", func(t *testing.T) {
 		var activity []ActivityEntry
-		for i := 0; i < 8; i++ {
+		for i := 0; i < 15; i++ {
 			activity = append(activity, ActivityEntry{
-				Time:   now.Add(time.Duration(-8+i) * time.Minute),
+				Time:   now.Add(time.Duration(-15+i) * time.Minute),
 				Tool:   "Edit",
 				Detail: "auth.go",
 			})
@@ -44,6 +43,20 @@ func TestEvaluateHealth(t *testing.T) {
 		}
 		if found.Severity != session.SeverityCritical {
 			t.Errorf("severity = %s, want critical", found.Severity)
+		}
+	})
+
+	t.Run("5 edits is healthy", func(t *testing.T) {
+		var activity []ActivityEntry
+		for i := 0; i < 5; i++ {
+			activity = append(activity, ActivityEntry{
+				Time: now.Add(time.Duration(-5+i) * time.Minute), Tool: "Edit", Detail: "auth.go",
+			})
+		}
+		diagnostics := EvaluateHealth(activity, now)
+		found := findDiagnostic(diagnostics, "repeated-edit")
+		if found != nil {
+			t.Errorf("5 edits should not trigger, got: %+v", found)
 		}
 	})
 
