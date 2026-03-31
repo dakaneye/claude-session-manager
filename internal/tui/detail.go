@@ -103,12 +103,7 @@ func (d *detailPane) View() string {
 	}
 
 	content := strings.Join(sections, "\n")
-	rendered := strings.Count(content, "\n") + 1
-	for rendered < d.height {
-		content += "\n"
-		rendered++
-	}
-	return content
+	return padToHeight(content, d.height)
 }
 
 // truncateMessage limits a message to maxLines lines, each at most maxWidth runes.

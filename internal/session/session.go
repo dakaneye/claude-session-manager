@@ -64,6 +64,14 @@ type Session struct {
 	LogPath      string       `json:"log_path,omitempty"`
 }
 
+// DisplayName returns the session's name, falling back to its ID.
+func (s Session) DisplayName() string {
+	if s.Name != "" {
+		return s.Name
+	}
+	return s.ID
+}
+
 // WorstHealth returns the most severe health from a set of diagnostics.
 func WorstHealth(diagnostics []Diagnostic) Health {
 	health := HealthGreen

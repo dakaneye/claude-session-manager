@@ -21,6 +21,13 @@ type LogSummary struct {
 
 const maxConversationTail = 20
 
+func (s *LogSummary) appendConversation(entry string) {
+	s.ConversationTail = append(s.ConversationTail, entry)
+	if len(s.ConversationTail) > maxConversationTail {
+		s.ConversationTail = s.ConversationTail[1:]
+	}
+}
+
 // ActivityEntry is a single tool invocation extracted from the log.
 type ActivityEntry struct {
 	Time    time.Time
@@ -124,10 +131,7 @@ func ParseLog(data []byte) LogSummary {
 				}
 				if c.Type == "text" && c.Text != "" {
 					summary.LastMessage = c.Text
-					summary.ConversationTail = append(summary.ConversationTail, "Claude: "+c.Text)
-					if len(summary.ConversationTail) > maxConversationTail {
-						summary.ConversationTail = summary.ConversationTail[1:]
-					}
+					summary.appendConversation("Claude: " + c.Text)
 				}
 			}
 
@@ -150,10 +154,7 @@ func ParseLog(data []byte) LogSummary {
 			// Include messages that have text content but aren't tool results or system noise.
 			userText := extractUserText(event.Message.Content, contents)
 			if userText != "" && !isSystemMessage(userText) && !isToolResultOnly(contents) {
-				summary.ConversationTail = append(summary.ConversationTail, "You: "+userText)
-				if len(summary.ConversationTail) > maxConversationTail {
-					summary.ConversationTail = summary.ConversationTail[1:]
-				}
+				summary.appendConversation("You: " + userText)
 			}
 
 			if pendingTool != "" {

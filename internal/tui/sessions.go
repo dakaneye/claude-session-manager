@@ -80,22 +80,14 @@ func (sl *sessionList) View() string {
 	}
 
 	content := strings.Join(lines, "\n")
-	rendered := strings.Count(content, "\n") + 1
-	for rendered < sl.height {
-		content += "\n"
-		rendered++
-	}
-	return content
+	return padToHeight(content, sl.height)
 }
 
 func (sl *sessionList) renderSession(idx int, s session.Session) []string {
 	selected := idx == sl.cursor
 
 	dot := healthDot(s.Health)
-	name := s.Name
-	if name == "" {
-		name = s.ID
-	}
+	name := s.DisplayName()
 	if selected {
 		name = sessionNameSelectedStyle.Render(name)
 	} else {

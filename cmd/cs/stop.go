@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"syscall"
@@ -16,15 +15,9 @@ func newStopCommand() *cobra.Command {
 		Short: "Stop a running session",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			sc := buildScanner()
-			sessions, err := sc.Scan(context.Background())
+			sess, _, err := resolveSession(args[0])
 			if err != nil {
-				return fmt.Errorf("scan sessions: %w", err)
-			}
-
-			sess := findSession(sessions, args[0])
-			if sess == nil {
-				return fmt.Errorf("session not found: %s", args[0])
+				return err
 			}
 
 			if sess.Source == session.SourceNative && sess.PID > 0 {

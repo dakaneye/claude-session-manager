@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/dakaneye/claude-session-manager/internal/session"
@@ -62,7 +61,7 @@ func (n *NativeSource) Scan(_ context.Context) ([]session.Session, error) {
 			continue
 		}
 
-		alive := isProcessAlive(ns.PID)
+		alive := session.IsProcessAlive(ns.PID)
 		status := session.StatusIdle
 		if alive {
 			status = session.StatusRunning
@@ -111,16 +110,4 @@ func (n *NativeSource) Scan(_ context.Context) ([]session.Session, error) {
 func nativeLogPath(claudeDir, cwd, sessionID string) string {
 	encoded := strings.NewReplacer("/", "-", ".", "-").Replace(cwd)
 	return filepath.Join(claudeDir, "projects", encoded, sessionID+".jsonl")
-}
-
-func isProcessAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	err = proc.Signal(syscall.Signal(0))
-	return err == nil
 }

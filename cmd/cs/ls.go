@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"text/tabwriter"
@@ -18,8 +17,7 @@ func newLsCommand() *cobra.Command {
 		Aliases: []string{"list"},
 		Short:   "List all sessions",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			sc := buildScanner()
-			sessions, err := sc.Scan(context.Background())
+			sessions, err := scanSessions()
 			if err != nil {
 				return fmt.Errorf("scan sessions: %w", err)
 			}
@@ -53,12 +51,8 @@ func printTable(cmd *cobra.Command, sessions []session.Session) error {
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "HEALTH\tNAME\tSOURCE\tSTATUS\tDIR")
 	for _, s := range sessions {
-		name := s.Name
-		if name == "" {
-			name = s.ID
-		}
 		dot := healthSymbol(s.Health)
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", dot, name, s.Source, s.Status, s.Dir)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", dot, s.DisplayName(), s.Source, s.Status, s.Dir)
 	}
 	return w.Flush()
 }

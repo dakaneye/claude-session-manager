@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/dakaneye/claude-session-manager/internal/scanner"
+	"github.com/dakaneye/claude-session-manager/internal/session"
 	"github.com/dakaneye/claude-session-manager/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +48,23 @@ func newVersionCommand() *cobra.Command {
 			cmd.Println("cs", version)
 		},
 	}
+}
+
+func scanSessions() ([]session.Session, error) {
+	sc := buildScanner()
+	return sc.Scan(context.Background())
+}
+
+func resolveSession(query string) (*session.Session, []session.Session, error) {
+	sessions, err := scanSessions()
+	if err != nil {
+		return nil, nil, err
+	}
+	sess := findSession(sessions, query)
+	if sess == nil {
+		return nil, sessions, fmt.Errorf("session not found: %s", query)
+	}
+	return sess, sessions, nil
 }
 
 func buildScanner() *scanner.Scanner {

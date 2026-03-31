@@ -3,7 +3,6 @@ package tui
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,7 +35,6 @@ type confirmAction int
 const (
 	confirmNone confirmAction = iota
 	confirmStop
-	confirmClean
 )
 
 type inputMode int
@@ -63,7 +61,6 @@ type App struct {
 	mode          inputMode
 	labelInput    string
 	confirmAction confirmAction
-	confirmCount  int // for clean: number of sessions to clean
 	flashMsg      string
 	flashExpiry   time.Time
 }
@@ -71,12 +68,13 @@ type App struct {
 // NewApp creates a TUI application backed by the given scanner.
 func NewApp(sc *scanner.Scanner) *App {
 	return &App{
-		scanner:      sc,
-		sessions:     newSessionList(),
-		detail:       newDetailPane(),
-		statusbar:    newStatusBar(),
-		activities:   make(map[string][]scanner.ActivityEntry),
-		lastMessages: make(map[string]string),
+		scanner:           sc,
+		sessions:          newSessionList(),
+		detail:            newDetailPane(),
+		statusbar:         newStatusBar(),
+		activities:        make(map[string][]scanner.ActivityEntry),
+		lastMessages:      make(map[string]string),
+		conversationTails: make(map[string][]string),
 	}
 }
 
@@ -139,10 +137,7 @@ func (a *App) View() tea.View {
 	leftTitle := " Sessions "
 	rightTitle := " Detail "
 	if sel != nil {
-		name := sel.Name
-		if name == "" {
-			name = sel.ID
-		}
+		name := sel.DisplayName()
 		rightTitle = " " + name + " "
 		if a.detail.peeking {
 			rightTitle = " " + name + " [PEEK] "
@@ -220,15 +215,6 @@ func (a *App) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			a.mode = modeConfirm
 			a.confirmAction = confirmStop
 		}
-	case keyClean:
-		count := a.countCleanable()
-		if count > 0 {
-			a.mode = modeConfirm
-			a.confirmAction = confirmClean
-			a.confirmCount = count
-		} else {
-			a.setFlash("No sessions to clean")
-		}
 	case keyNew:
 		return a, a.launchClaude()
 	case keyAttach:
@@ -260,7 +246,7 @@ func (a *App) handleLabelKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.labelInput = ""
 	case isEnter(msg):
 		if sel := a.sessions.Selected(); sel != nil && a.labelInput != "" {
-			if err := writeLabel(sel.ID, a.labelInput); err != nil {
+			if err := session.WriteLabel(sel.ID, a.labelInput); err != nil {
 				a.setFlash("Label error: " + err.Error())
 			} else {
 				a.setFlash("Labeled: " + a.labelInput)
@@ -286,11 +272,8 @@ func (a *App) handleConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.mode = modeNormal
 		a.confirmAction = confirmNone
 	case msg.String() == "y":
-		switch a.confirmAction {
-		case confirmStop:
+		if a.confirmAction == confirmStop {
 			a.executeStop()
-		case confirmClean:
-			a.executeClean()
 		}
 		a.mode = modeNormal
 		a.confirmAction = confirmNone
@@ -308,13 +291,7 @@ func (a *App) confirmPrompt() string {
 		if sel == nil {
 			return "Stop? (y/n)"
 		}
-		name := sel.Name
-		if name == "" {
-			name = sel.ID
-		}
-		return fmt.Sprintf("Stop %s? (y/n)", name)
-	case confirmClean:
-		return fmt.Sprintf("Clean %d sessions? (y/n)", a.confirmCount)
+		return fmt.Sprintf("Stop %s? (y/n)", sel.DisplayName())
 	default:
 		return "(y/n)"
 	}
@@ -343,65 +320,6 @@ func (a *App) executeStop() {
 	} else {
 		a.setFlash("Stop not supported for " + string(sel.Source) + " sessions")
 	}
-}
-
-func (a *App) countCleanable() int {
-	count := 0
-	for _, s := range a.sessions.sessions {
-		if isCleanable(s) {
-			count++
-		}
-	}
-	return count
-}
-
-func isCleanable(s session.Session) bool {
-	switch s.Status {
-	case session.StatusSuccess, session.StatusFailed:
-		return true
-	case session.StatusIdle:
-		// Native idle sessions with dead process are cleanable.
-		if s.Source == session.SourceNative && s.PID > 0 {
-			return !isAlive(s.PID)
-		}
-		return false
-	default:
-		return false
-	}
-}
-
-func isAlive(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
-}
-
-func (a *App) executeClean() {
-	cleaned := 0
-	home, err := os.UserHomeDir()
-	if err != nil {
-		a.setFlash("Clean error: " + err.Error())
-		return
-	}
-	sessDir := filepath.Join(home, ".claude", "sessions")
-
-	for _, s := range a.sessions.sessions {
-		if !isCleanable(s) {
-			continue
-		}
-		if s.Source == session.SourceNative && s.PID > 0 {
-			pidFile := filepath.Join(sessDir, fmt.Sprintf("%d.json", s.PID))
-			if err := os.Remove(pidFile); err == nil {
-				cleaned++
-			}
-		}
-	}
-	a.setFlash(fmt.Sprintf("Cleaned %d sessions", cleaned))
 }
 
 func (a *App) launchClaude() tea.Cmd {
@@ -501,25 +419,4 @@ func readLogTail(path string) ([]byte, error) {
 		buf = buf[idx+1:]
 	}
 	return buf, nil
-}
-
-// sessionLabel is the JSON structure for persisted session labels.
-type sessionLabel struct {
-	Label string `json:"label"`
-}
-
-func writeLabel(sessionID, label string) error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("get home dir: %w", err)
-	}
-	dir := filepath.Join(home, ".claude", "session-labels")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create label dir: %w", err)
-	}
-	data, err := json.Marshal(sessionLabel{Label: label})
-	if err != nil {
-		return fmt.Errorf("marshal label: %w", err)
-	}
-	return os.WriteFile(filepath.Join(dir, sessionID+".json"), data, 0o644)
 }

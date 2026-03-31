@@ -11,7 +11,6 @@ const (
 	keyPeek
 	keyNew
 	keyStop
-	keyClean
 	keyLabel
 	keyAttach
 	keyHelp

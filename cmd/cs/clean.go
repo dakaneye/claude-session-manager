@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/dakaneye/claude-session-manager/internal/session"
@@ -15,8 +14,7 @@ func newCleanCommand() *cobra.Command {
 		Use:   "clean",
 		Short: "Remove completed or failed sessions",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			sc := buildScanner()
-			sessions, err := sc.Scan(context.Background())
+			sessions, err := scanSessions()
 			if err != nil {
 				return fmt.Errorf("scan sessions: %w", err)
 			}
