@@ -150,7 +150,7 @@ func ParseLog(data []byte) LogSummary {
 			// Only include messages with promptId (real user input, not tool results).
 			if event.PromptID != "" {
 				userText := extractUserText(event.Message.Content, contents)
-				if userText != "" {
+				if userText != "" && !isSystemMessage(userText) {
 					summary.ConversationTail = append(summary.ConversationTail, "You: "+userText)
 					if len(summary.ConversationTail) > maxConversationTail {
 						summary.ConversationTail = summary.ConversationTail[1:]
@@ -185,12 +185,21 @@ func ParseLog(data []byte) LogSummary {
 	return summary
 }
 
+// isSystemMessage detects auto-generated system messages that shouldn't
+// appear in conversation (task notifications, hook output, skill loading).
+func isSystemMessage(text string) bool {
+	return strings.HasPrefix(text, "<task-notification>") ||
+		strings.HasPrefix(text, "<system-reminder>") ||
+		strings.HasPrefix(text, "Base directory for this skill:") ||
+		strings.HasPrefix(text, "Tool loaded.")
+}
+
 // extractUserText gets the user's text from a message content field.
 // Content can be a JSON string, an array of objects, or an array with strings.
 func extractUserText(raw json.RawMessage, parsed []logContent) string {
 	// First try: check if content is a plain string (common for user prompts).
 	var topStr string
-	if err := json.Unmarshal(raw, &topStr); err == nil && len(topStr) > 3 {
+	if err := json.Unmarshal(raw, &topStr); err == nil && len(topStr) > 1 {
 		return topStr
 	}
 	// Second try: look for text objects in parsed content.

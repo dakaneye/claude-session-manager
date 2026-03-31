@@ -26,7 +26,24 @@ func (sl *sessionList) SetSize(w, h int) {
 }
 
 func (sl *sessionList) SetSessions(sessions []session.Session) {
+	// Preserve cursor on the same session across refreshes.
+	var selectedID string
+	if sl.cursor < len(sl.sessions) {
+		selectedID = sl.sessions[sl.cursor].ID
+	}
+
 	sl.sessions = sessions
+
+	// Try to restore cursor to the same session.
+	if selectedID != "" {
+		for i, s := range sessions {
+			if s.ID == selectedID {
+				sl.cursor = i
+				return
+			}
+		}
+	}
+	// Fallback: clamp cursor.
 	if sl.cursor >= len(sessions) && len(sessions) > 0 {
 		sl.cursor = len(sessions) - 1
 	}

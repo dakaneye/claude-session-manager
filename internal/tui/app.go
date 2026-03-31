@@ -475,7 +475,7 @@ func (a *App) tick() tea.Cmd {
 }
 
 func readLogTail(path string) ([]byte, error) {
-	const maxBytes = 512 * 1024
+	const maxBytes = 1024 * 1024
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
