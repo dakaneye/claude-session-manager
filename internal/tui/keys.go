@@ -40,8 +40,6 @@ func parseKey(msg tea.KeyPressMsg) keyAction {
 		return keyNew
 	case "s":
 		return keyStop
-	case "c":
-		return keyClean
 	case "l":
 		return keyLabel
 	case "a":

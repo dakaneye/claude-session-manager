@@ -144,7 +144,7 @@ func TestDetailPane_RendersSessionInfo(t *testing.T) {
 
 	sess := testSessions()[0]
 	activity := testActivity()
-	d.SetSession(&sess, activity, "")
+	d.SetSession(&sess, activity, "", nil)
 
 	output := d.View()
 
@@ -212,7 +212,7 @@ func TestDetailPane_RendersDiagnostics(t *testing.T) {
 	d.SetSize(60, 30)
 
 	sess := testSessions()[1] // The one with diagnostics.
-	d.SetSession(&sess, nil, "")
+	d.SetSession(&sess, nil, "", nil)
 
 	output := d.View()
 
@@ -237,7 +237,7 @@ func TestDetailPane_CriticalDiagnosticUsesErrorIcon(t *testing.T) {
 			{Signal: "test-loop", Severity: session.SeverityCritical, Detail: "tests failing 3 times"},
 		},
 	}
-	d.SetSession(&sess, nil, "")
+	d.SetSession(&sess, nil, "", nil)
 
 	output := d.View()
 
@@ -255,31 +255,40 @@ func TestDetailPane_PeekMode(t *testing.T) {
 
 	sess := testSessions()[0]
 	activity := testActivity()
-	d.SetSession(&sess, activity, "")
+	convTail := []string{"I'm working on the auth refactor.", "Let me run the tests now."}
+	d.SetSession(&sess, activity, "Let me run the tests now.", convTail)
 
 	normalView := d.View()
 	d.TogglePeek()
 	peekView := d.View()
 
+	t.Run("normal mode shows activity", func(t *testing.T) {
+		if !strings.Contains(normalView, "Recent Activity") {
+			t.Error("normal view should contain Recent Activity")
+		}
+	})
+
+	t.Run("peek mode shows conversation instead of activity", func(t *testing.T) {
+		if !strings.Contains(peekView, "Conversation") {
+			t.Error("peek view should contain Conversation section")
+		}
+		if strings.Contains(peekView, "Recent Activity") {
+			t.Error("peek view should not contain Recent Activity")
+		}
+	})
+
+	t.Run("peek mode shows conversation messages", func(t *testing.T) {
+		if !strings.Contains(peekView, "auth refactor") {
+			t.Error("peek view should show conversation messages")
+		}
+		if !strings.Contains(peekView, "run the tests") {
+			t.Error("peek view should show conversation messages")
+		}
+	})
+
 	t.Run("peek mode keeps info section", func(t *testing.T) {
-		if !strings.Contains(normalView, "Source:") {
-			t.Error("normal view should contain Source:")
-		}
 		if !strings.Contains(peekView, "Source:") {
-			t.Error("peek view should also contain Source:")
-		}
-	})
-
-	t.Run("peek mode shows full paths", func(t *testing.T) {
-		if !strings.Contains(peekView, "/workspace/internal/auth/middleware.go") {
-			t.Error("peek view should show full paths")
-		}
-	})
-
-	t.Run("peek mode shows error markers", func(t *testing.T) {
-		// The third activity entry has IsError=true.
-		if !strings.Contains(peekView, "\u2716") {
-			t.Error("peek view should show error marker for failed tool results")
+			t.Error("peek view should keep Source: info")
 		}
 	})
 }
@@ -292,7 +301,7 @@ func TestStatusBar_RendersKeyBindings(t *testing.T) {
 
 	output := sb.View()
 
-	bindings := []string{"navigate", "peek", "new", "attach", "stop", "clean", "label", "help", "quit"}
+	bindings := []string{"navigate", "peek", "new", "attach", "stop", "label", "help", "quit"}
 	for _, b := range bindings {
 		if !strings.Contains(output, b) {
 			t.Errorf("missing keybinding hint %q in status bar", b)
@@ -313,7 +322,6 @@ func TestStatusBar_HelpViewShowsAllBindings(t *testing.T) {
 		"New session",
 		"Attach to native session",
 		"Stop selected session",
-		"Clean completed/failed",
 		"Label selected session",
 		"Toggle this help",
 		"Quit",

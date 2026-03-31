@@ -19,10 +19,11 @@ import (
 const tickInterval = 3 * time.Second
 
 type tickMsg struct {
-	sessions     []session.Session
-	activities   map[string][]scanner.ActivityEntry
-	lastMessages map[string]string
-	err          error
+	sessions          []session.Session
+	activities        map[string][]scanner.ActivityEntry
+	lastMessages      map[string]string
+	conversationTails map[string][]string
+	err               error
 }
 
 type execFinishedMsg struct {
@@ -47,14 +48,15 @@ const (
 
 // App is the root Bubbletea model.
 type App struct {
-	scanner      *scanner.Scanner
-	sessions     sessionList
-	detail       detailPane
-	statusbar    statusBar
-	width        int
-	height       int
-	activities   map[string][]scanner.ActivityEntry
-	lastMessages map[string]string
+	scanner           *scanner.Scanner
+	sessions          sessionList
+	detail            detailPane
+	statusbar         statusBar
+	width             int
+	height            int
+	activities        map[string][]scanner.ActivityEntry
+	lastMessages      map[string]string
+	conversationTails map[string][]string
 
 	// Interactive input state.
 	mode          inputMode
@@ -97,6 +99,7 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.sessions.SetSessions(msg.sessions)
 			a.activities = msg.activities
 			a.lastMessages = msg.lastMessages
+			a.conversationTails = msg.conversationTails
 			a.updateDetail()
 		}
 		// Clear expired flash messages.
@@ -331,7 +334,11 @@ func (a *App) executeStop() {
 			a.setFlash("Stop error: " + err.Error())
 			return
 		}
-		a.setFlash("Sent SIGTERM to PID " + fmt.Sprint(sel.PID))
+		// Remove the session file so it disappears from the list.
+		home, _ := os.UserHomeDir()
+		pidFile := filepath.Join(home, ".claude", "sessions", fmt.Sprintf("%d.json", sel.PID))
+		_ = os.Remove(pidFile)
+		a.setFlash("Stopped PID " + fmt.Sprint(sel.PID))
 	} else {
 		a.setFlash("Stop not supported for " + string(sel.Source) + " sessions")
 	}
@@ -420,12 +427,13 @@ func (a *App) updateLayout() {
 func (a *App) updateDetail() {
 	sel := a.sessions.Selected()
 	if sel == nil {
-		a.detail.SetSession(nil, nil, "")
+		a.detail.SetSession(nil, nil, "", nil)
 		return
 	}
 	activity := a.activities[sel.ID]
 	lastMessage := a.lastMessages[sel.ID]
-	a.detail.SetSession(sel, activity, lastMessage)
+	convTail := a.conversationTails[sel.ID]
+	a.detail.SetSession(sel, activity, lastMessage, convTail)
 }
 
 func (a *App) tick() tea.Cmd {
@@ -440,6 +448,7 @@ func (a *App) tick() tea.Cmd {
 
 		activities := make(map[string][]scanner.ActivityEntry)
 		lastMessages := make(map[string]string)
+		conversationTails := make(map[string][]string)
 		for _, s := range sessions {
 			if s.LogPath != "" {
 				if data, err := readLogTail(s.LogPath); err == nil {
@@ -448,11 +457,19 @@ func (a *App) tick() tea.Cmd {
 					if summary.LastMessage != "" {
 						lastMessages[s.ID] = summary.LastMessage
 					}
+					if len(summary.ConversationTail) > 0 {
+						conversationTails[s.ID] = summary.ConversationTail
+					}
 				}
 			}
 		}
 
-		return tickMsg{sessions: sessions, activities: activities, lastMessages: lastMessages}
+		return tickMsg{
+			sessions:          sessions,
+			activities:        activities,
+			lastMessages:      lastMessages,
+			conversationTails: conversationTails,
+		}
 	})
 }
 

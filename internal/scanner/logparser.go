@@ -15,7 +15,11 @@ type LogSummary struct {
 	RecentActivity    []ActivityEntry
 	FailedToolResults int
 	LastMessage       string // Last assistant text content
+	// ConversationTail holds the last N assistant text messages for peek mode.
+	ConversationTail []string
 }
+
+const maxConversationTail = 20
 
 // ActivityEntry is a single tool invocation extracted from the log.
 type ActivityEntry struct {
@@ -89,6 +93,10 @@ func ParseLog(data []byte) LogSummary {
 				}
 				if c.Type == "text" && c.Text != "" {
 					summary.LastMessage = c.Text
+					summary.ConversationTail = append(summary.ConversationTail, c.Text)
+					if len(summary.ConversationTail) > maxConversationTail {
+						summary.ConversationTail = summary.ConversationTail[1:]
+					}
 				}
 			}
 

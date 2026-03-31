@@ -87,13 +87,26 @@ func (sl *sessionList) renderSession(idx int, s session.Session) []string {
 	age := formatAge(s.StartedAt)
 
 	line1 := fmt.Sprintf("  %s %s %s", dot, name, lipgloss.NewStyle().Foreground(colorDim).Render(age))
-	meta := fmt.Sprintf("%s · %s", s.Source, s.Status)
+	displayStatus := string(s.Status)
+	if s.Status == session.StatusRunning && hasIdleDiagnostic(s) {
+		displayStatus = "idle"
+	}
+	meta := fmt.Sprintf("%s · %s", s.Source, displayStatus)
 	if s.Task != "" {
 		meta += " · " + s.Task
 	}
 	line2 := sessionMetaStyle.Render(meta)
 
 	return []string{line1, line2, ""}
+}
+
+func hasIdleDiagnostic(s session.Session) bool {
+	for _, d := range s.Diagnostics {
+		if d.Signal == "idle" {
+			return true
+		}
+	}
+	return false
 }
 
 func healthDot(h session.Health) string {
