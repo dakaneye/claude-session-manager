@@ -12,6 +12,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	ptyPkg "github.com/dakaneye/claude-session-manager/internal/pty"
 	"github.com/dakaneye/claude-session-manager/internal/scanner"
 	"github.com/dakaneye/claude-session-manager/internal/session"
 )
@@ -35,6 +36,8 @@ type confirmAction int
 const (
 	confirmNone confirmAction = iota
 	confirmStop
+	confirmResume
+	confirmNextStage
 )
 
 type inputMode int
@@ -48,6 +51,7 @@ const (
 // App is the root Bubbletea model.
 type App struct {
 	scanner           *scanner.Scanner
+	ptyMgr            *ptyPkg.Manager
 	sessions          sessionList
 	detail            detailPane
 	statusbar         statusBar
@@ -66,9 +70,10 @@ type App struct {
 }
 
 // NewApp creates a TUI application backed by the given scanner.
-func NewApp(sc *scanner.Scanner) *App {
+func NewApp(sc *scanner.Scanner, ptyMgr *ptyPkg.Manager) *App {
 	return &App{
 		scanner:           sc,
+		ptyMgr:            ptyMgr,
 		sessions:          newSessionList(),
 		detail:            newDetailPane(),
 		statusbar:         newStatusBar(),
@@ -218,11 +223,37 @@ func (a *App) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case keyNew:
 		return a, a.launchClaude()
 	case keyAttach:
-		if sel := a.sessions.Selected(); sel != nil && sel.Source == session.SourceNative {
-			a.setFlash(fmt.Sprintf("Session running in: %s (PID %d)", sel.Dir, sel.PID))
-		} else if sel != nil {
-			a.setFlash("Attach only works for native sessions")
+		sel := a.sessions.Selected()
+		if sel == nil {
+			break
 		}
+		if sel.Managed && sel.Status == session.StatusRunning {
+			if a.ptyMgr == nil {
+				a.setFlash("PTY manager not initialized")
+				break
+			}
+			sess, ok := a.ptyMgr.Get(sel.ID)
+			if !ok {
+				a.setFlash("PTY session not found — may need resume")
+				break
+			}
+			return a, a.attachSession(sess)
+		}
+		if sel.Managed && sel.Status == session.StatusStopped {
+			a.mode = modeConfirm
+			a.confirmAction = confirmResume
+			break
+		}
+		if !sel.Managed && sel.Status == session.StatusRunning {
+			a.setFlash("Session not managed by cs — use peek to monitor")
+			break
+		}
+		if !sel.Managed && sel.Status == session.StatusIdle {
+			a.mode = modeConfirm
+			a.confirmAction = confirmResume
+			break
+		}
+		a.setFlash(fmt.Sprintf("Cannot attach to %s session (status: %s)", sel.Source, sel.Status))
 	}
 	return a, nil
 }
@@ -272,8 +303,11 @@ func (a *App) handleConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.mode = modeNormal
 		a.confirmAction = confirmNone
 	case msg.String() == "y":
-		if a.confirmAction == confirmStop {
+		switch a.confirmAction {
+		case confirmStop:
 			a.executeStop()
+		case confirmResume:
+			a.executeResume()
 		}
 		a.mode = modeNormal
 		a.confirmAction = confirmNone
@@ -292,6 +326,12 @@ func (a *App) confirmPrompt() string {
 			return "Stop? (y/n)"
 		}
 		return fmt.Sprintf("Stop %s? (y/n)", sel.DisplayName())
+	case confirmResume:
+		sel := a.sessions.Selected()
+		if sel == nil {
+			return "Resume? (y/n)"
+		}
+		return fmt.Sprintf("Resume %s? (y/n)", sel.DisplayName())
 	default:
 		return "(y/n)"
 	}
@@ -322,11 +362,53 @@ func (a *App) executeStop() {
 	}
 }
 
-func (a *App) launchClaude() tea.Cmd {
-	c := exec.Command("claude")
-	return tea.ExecProcess(c, func(err error) tea.Msg {
+func (a *App) attachSession(sess *ptyPkg.ManagedSession) tea.Cmd {
+	proxy := ptyPkg.NewProxy(sess)
+	return tea.Exec(proxy, func(err error) tea.Msg {
 		return execFinishedMsg{err: err}
 	})
+}
+
+func (a *App) launchClaude() tea.Cmd {
+	if a.ptyMgr == nil {
+		c := exec.Command("claude")
+		return tea.ExecProcess(c, func(err error) tea.Msg {
+			return execFinishedMsg{err: err}
+		})
+	}
+
+	dir, _ := os.Getwd()
+	id := fmt.Sprintf("cs-%d", time.Now().UnixMilli())
+	cmd := exec.Command("claude")
+	cmd.Dir = dir
+
+	if err := a.ptyMgr.Spawn(id, cmd, dir); err != nil {
+		return func() tea.Msg {
+			return execFinishedMsg{err: err}
+		}
+	}
+
+	sess, _ := a.ptyMgr.Get(id)
+	return a.attachSession(sess)
+}
+
+func (a *App) executeResume() {
+	sel := a.sessions.Selected()
+	if sel == nil {
+		return
+	}
+
+	if a.ptyMgr != nil {
+		cmd := exec.Command("claude", "--resume", sel.ID)
+		cmd.Dir = sel.Dir
+		if err := a.ptyMgr.Spawn(sel.ID, cmd, sel.Dir); err != nil {
+			a.setFlash("Resume error: " + err.Error())
+			return
+		}
+		a.setFlash("Resumed — press 'a' to attach")
+		return
+	}
+	a.setFlash("PTY manager not initialized")
 }
 
 func (a *App) setFlash(msg string) {
