@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -228,5 +229,21 @@ func TestStatusBar_HelpToggle(t *testing.T) {
 
 	if normal == help {
 		t.Error("help view should differ from normal view")
+	}
+}
+
+func TestSessionList_ManagedIndicator(t *testing.T) {
+	sl := newSessionList()
+	sl.width = 60
+	sl.height = 20
+	sl.sessions = []session.Session{
+		{ID: "m1", Name: "managed-one", Source: session.SourceNative, Health: session.HealthGreen, Managed: true},
+		{ID: "d1", Name: "discovered", Source: session.SourceNative, Health: session.HealthGreen, Managed: false},
+	}
+
+	view := sl.View()
+
+	if !strings.Contains(view, "[cs]") {
+		t.Error("managed session should show [cs] indicator")
 	}
 }

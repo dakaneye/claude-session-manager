@@ -14,13 +14,16 @@ const (
 type Status string
 
 const (
-	StatusRunning  Status = "running"
-	StatusIdle     Status = "idle"
-	StatusSuccess  Status = "success"
-	StatusFailed   Status = "failed"
-	StatusBlocked  Status = "blocked"
-	StatusSpeccing Status = "speccing"
-	StatusReady    Status = "ready"
+	StatusRunning   Status = "running"
+	StatusIdle      Status = "idle"
+	StatusSuccess   Status = "success"
+	StatusFailed    Status = "failed"
+	StatusBlocked   Status = "blocked"
+	StatusSpeccing  Status = "speccing"
+	StatusReady     Status = "ready"
+	StatusStopped   Status = "stopped"
+	StatusExecuting Status = "executing"
+	StatusShipping  Status = "shipping"
 )
 
 // Health is a traffic-light indicator for session health.
@@ -62,6 +65,7 @@ type Session struct {
 	Diagnostics  []Diagnostic `json:"diagnostics,omitempty"`
 	PID          int          `json:"pid,omitempty"`
 	LogPath      string       `json:"log_path,omitempty"`
+	Managed      bool         `json:"managed,omitempty"`
 }
 
 // DisplayName returns the session's name, falling back to its ID.
