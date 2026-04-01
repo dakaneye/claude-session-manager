@@ -21,7 +21,7 @@ func keyPress(code rune) tea.KeyPressMsg {
 }
 
 func TestApp_KeyNavigation(t *testing.T) {
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	app.sessions.sessions = []session.Session{
 		{ID: "s1", Name: "first", Source: session.SourceSandbox, Health: session.HealthGreen},
 		{ID: "s2", Name: "second", Source: session.SourceNative, Health: session.HealthYellow},
@@ -124,7 +124,7 @@ func TestApp_KeyNavigation(t *testing.T) {
 }
 
 func TestApp_TickUpdatesSessions(t *testing.T) {
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 
 	sessions := []session.Session{
 		{ID: "s1", Name: "test", LastActivity: time.Now()},
@@ -142,7 +142,7 @@ func TestApp_TickUpdatesSessions(t *testing.T) {
 }
 
 func TestApp_TickErrorPreservesState(t *testing.T) {
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	app.sessions.sessions = []session.Session{
 		{ID: "existing", Name: "keep"},
 	}
@@ -229,6 +229,37 @@ func TestStatusBar_HelpToggle(t *testing.T) {
 
 	if normal == help {
 		t.Error("help view should differ from normal view")
+	}
+}
+
+func TestApp_AttachDiscoveredSession(t *testing.T) {
+	app := NewApp(nil, nil)
+	app.sessions.sessions = []session.Session{
+		{ID: "d1", Name: "discovered", Source: session.SourceNative, Health: session.HealthGreen, Managed: false, Status: session.StatusRunning},
+	}
+
+	updated, _ := app.Update(keyPress('a'))
+	app = updated.(*App)
+
+	if !strings.Contains(app.flashMsg, "not managed") {
+		t.Errorf("flash = %q, want to contain 'not managed'", app.flashMsg)
+	}
+}
+
+func TestApp_AttachStoppedManagedSession(t *testing.T) {
+	app := NewApp(nil, nil)
+	app.sessions.sessions = []session.Session{
+		{ID: "s1", Name: "stopped", Source: session.SourceNative, Health: session.HealthGreen, Managed: true, Status: session.StatusStopped},
+	}
+
+	updated, _ := app.Update(keyPress('a'))
+	app = updated.(*App)
+
+	if app.mode != modeConfirm {
+		t.Errorf("mode = %d, want modeConfirm", app.mode)
+	}
+	if app.confirmAction != confirmResume {
+		t.Errorf("confirmAction = %d, want confirmResume", app.confirmAction)
 	}
 }
 

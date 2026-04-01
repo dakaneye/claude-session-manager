@@ -119,7 +119,7 @@ func TestIntegration_ScannerToTUI(t *testing.T) {
 	}
 
 	// --- Feed to TUI and verify rendering ---
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	app.width = 120
 	app.height = 40
 	app.sessions.SetSessions(sessions)
