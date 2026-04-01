@@ -1,26 +1,28 @@
 ---
-name: Bug Report
-about: Report a bug in cs
+name: Bug report
+about: Report something that isn't working
 title: ''
 labels: bug
 assignees: ''
 ---
 
 **Describe the bug**
-A clear description of what the bug is.
+A clear description of what's wrong.
 
 **To reproduce**
-Steps to reproduce:
-1. Run `cs ...`
-2. See error
+Steps to reproduce the behavior.
 
 **Expected behavior**
 What you expected to happen.
 
 **Environment**
-- OS: [e.g., macOS 15, Ubuntu 24.04]
-- cs version: [e.g., 0.1.0]
-- Terminal: [e.g., iTerm2, Alacritty]
+- OS: [e.g. macOS 14.0]
+- Version: [e.g. 0.1.0]
+
+**Logs**
+```
+Paste relevant logs here
+```
 
 **Additional context**
-Any other context, logs, or screenshots.
+Any other relevant information.
