@@ -253,6 +253,11 @@ func (a *App) handleNormalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			a.confirmAction = confirmResume
 			break
 		}
+		if sel.Source == session.SourceSandbox && (sel.Status == session.StatusReady || sel.Status == session.StatusSuccess) {
+			a.mode = modeConfirm
+			a.confirmAction = confirmNextStage
+			break
+		}
 		a.setFlash(fmt.Sprintf("Cannot attach to %s session (status: %s)", sel.Source, sel.Status))
 	}
 	return a, nil
@@ -308,6 +313,8 @@ func (a *App) handleConfirmKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			a.executeStop()
 		case confirmResume:
 			a.executeResume()
+		case confirmNextStage:
+			a.executeNextStage()
 		}
 		a.mode = modeNormal
 		a.confirmAction = confirmNone
@@ -332,6 +339,21 @@ func (a *App) confirmPrompt() string {
 			return "Resume? (y/n)"
 		}
 		return fmt.Sprintf("Resume %s? (y/n)", sel.DisplayName())
+	case confirmNextStage:
+		sel := a.sessions.Selected()
+		if sel == nil {
+			return "Start next stage? (y/n)"
+		}
+		var nextStage string
+		switch sel.Status {
+		case session.StatusReady:
+			nextStage = "execute"
+		case session.StatusSuccess:
+			nextStage = "ship"
+		default:
+			nextStage = "next stage"
+		}
+		return fmt.Sprintf("Start %s for %s? (y/n)", nextStage, sel.DisplayName())
 	default:
 		return "(y/n)"
 	}
@@ -409,6 +431,37 @@ func (a *App) executeResume() {
 		return
 	}
 	a.setFlash("PTY manager not initialized")
+}
+
+func (a *App) executeNextStage() {
+	sel := a.sessions.Selected()
+	if sel == nil || a.ptyMgr == nil {
+		return
+	}
+
+	var cmdName string
+	var args []string
+	switch sel.Status {
+	case session.StatusReady:
+		cmdName = "claude-sandbox"
+		args = []string{"execute", "--session", sel.ID}
+	case session.StatusSuccess:
+		cmdName = "claude-sandbox"
+		args = []string{"ship", "--session", sel.ID}
+	default:
+		a.setFlash("No next stage for status: " + string(sel.Status))
+		return
+	}
+
+	id := sel.ID + "-" + args[0]
+	cmd := exec.Command(cmdName, args...)
+	cmd.Dir = sel.Dir
+
+	if err := a.ptyMgr.Spawn(id, cmd, sel.Dir); err != nil {
+		a.setFlash("Stage error: " + err.Error())
+		return
+	}
+	a.setFlash(fmt.Sprintf("Started %s — press 'a' to attach", args[0]))
 }
 
 func (a *App) setFlash(msg string) {

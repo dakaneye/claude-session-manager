@@ -263,6 +263,30 @@ func TestApp_AttachStoppedManagedSession(t *testing.T) {
 	}
 }
 
+func TestApp_AttachSandboxBetweenStages(t *testing.T) {
+	app := NewApp(nil, nil)
+	app.sessions.sessions = []session.Session{
+		{
+			ID:      "sb1",
+			Name:    "sandbox-ready",
+			Source:  session.SourceSandbox,
+			Health:  session.HealthGreen,
+			Managed: true,
+			Status:  session.StatusReady,
+		},
+	}
+
+	updated, _ := app.Update(keyPress('a'))
+	app = updated.(*App)
+
+	if app.mode != modeConfirm {
+		t.Errorf("mode = %d, want modeConfirm", app.mode)
+	}
+	if app.confirmAction != confirmNextStage {
+		t.Errorf("confirmAction = %d, want confirmNextStage", app.confirmAction)
+	}
+}
+
 func TestSessionList_ManagedIndicator(t *testing.T) {
 	sl := newSessionList()
 	sl.width = 60
