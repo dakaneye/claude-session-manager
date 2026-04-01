@@ -31,4 +31,5 @@ release:
   github:
     owner: dakaneye
     name: claude-session-manager
-  disable: true
+  draft: false
+  prerelease: auto
