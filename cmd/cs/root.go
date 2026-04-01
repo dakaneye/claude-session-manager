@@ -42,6 +42,9 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newCleanCommand())
 	cmd.AddCommand(newNewCommand())
 	cmd.AddCommand(newVersionCommand())
+	cmd.AddCommand(newAttachCommand())
+	cmd.AddCommand(newResumeCommand())
+	cmd.AddCommand(newSandboxCommand())
 
 	return cmd
 }

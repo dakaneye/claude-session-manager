@@ -320,7 +320,7 @@ func TestStatusBar_HelpViewShowsAllBindings(t *testing.T) {
 		"Navigate sessions",
 		"Toggle peek (conversation view)",
 		"New session",
-		"Attach to native session",
+		"Attach to managed session / resume stopped session",
 		"Stop selected session",
 		"Label selected session",
 		"Toggle this help",
