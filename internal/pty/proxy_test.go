@@ -1,15 +1,71 @@
 package pty
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dakaneye/claude-session-manager/internal/session"
 )
 
 func TestDetachByte(t *testing.T) {
 	if DetachByte != 0x1d {
 		t.Errorf("DetachByte = %#x, want 0x1d", DetachByte)
+	}
+}
+
+func TestDetachByteDetection(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    []byte
+		wantStop bool
+	}{
+		{"no detach byte", []byte("hello world"), false},
+		{"detach byte alone", []byte{DetachByte}, true},
+		{"detach byte in middle", []byte{'a', DetachByte, 'b'}, true},
+		{"detach byte at end", []byte{'a', 'b', DetachByte}, true},
+		{"empty input", []byte{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			found := false
+			for i := range len(tt.input) {
+				if tt.input[i] == DetachByte {
+					found = true
+					break
+				}
+			}
+			if found != tt.wantStop {
+				t.Errorf("detach found = %v, want %v", found, tt.wantStop)
+			}
+		})
+	}
+}
+
+func TestProxy_SessionDoneClosesProxy(t *testing.T) {
+	stateDir := t.TempDir()
+	m := NewManager(stateDir)
+
+	cmd := exec.Command("echo", "exit-quickly")
+	if err := m.Spawn(t.Context(), "done-test", cmd, "/tmp", session.SourceNative); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	t.Cleanup(func() { _ = m.Stop(context.Background(), "done-test") })
+
+	sess, ok := m.Get("done-test")
+	if !ok {
+		t.Fatal("session not found")
+	}
+
+	select {
+	case <-sess.Done:
+		// Process exited, which would cause Proxy.Run() to return io.EOF
+		// via the <-p.sess.Done select case.
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for Done channel")
 	}
 }
 
@@ -34,10 +90,10 @@ func TestProxy_PTYReadOutput(t *testing.T) {
 	m := NewManager(stateDir)
 
 	cmd := exec.Command("echo", "proxy-read-test")
-	if err := m.Spawn("pty-read", cmd, "/tmp"); err != nil {
+	if err := m.Spawn(t.Context(), "pty-read", cmd, "/tmp", session.SourceNative); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
-	t.Cleanup(func() { _ = m.Stop("pty-read") })
+	t.Cleanup(func() { _ = m.Stop(context.Background(), "pty-read") })
 
 	sess, ok := m.Get("pty-read")
 	if !ok {
@@ -55,10 +111,10 @@ func TestProxy_PTYWriteAndReadBack(t *testing.T) {
 	m := NewManager(stateDir)
 
 	cmd := exec.Command("cat")
-	if err := m.Spawn("pty-write", cmd, "/tmp"); err != nil {
+	if err := m.Spawn(t.Context(), "pty-write", cmd, "/tmp", session.SourceNative); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
-	t.Cleanup(func() { _ = m.Stop("pty-write") })
+	t.Cleanup(func() { _ = m.Stop(context.Background(), "pty-write") })
 
 	sess, ok := m.Get("pty-write")
 	if !ok {

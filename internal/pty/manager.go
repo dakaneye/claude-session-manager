@@ -1,6 +1,7 @@
 package pty
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/xpty"
+	"github.com/dakaneye/claude-session-manager/internal/session"
 )
 
 // ManagedSession represents a PTY-backed session managed by the Manager.
@@ -20,18 +22,8 @@ type ManagedSession struct {
 	Pty     xpty.Pty
 	Done    chan struct{}
 	dir     string
+	source  session.Source
 	started time.Time
-}
-
-// Metadata is the on-disk representation of a managed session.
-type Metadata struct {
-	ID        string    `json:"id"`
-	PID       int       `json:"pid"`
-	Dir       string    `json:"dir"`
-	Source    string    `json:"source"`
-	Stage     string    `json:"stage,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	Managed   bool      `json:"managed"`
 }
 
 // Manager tracks and controls PTY-backed sessions.
@@ -50,8 +42,7 @@ func NewManager(stateDir string) *Manager {
 }
 
 // Spawn allocates a PTY, starts cmd, and tracks the session under id.
-// dir is the working directory associated with the session.
-func (m *Manager) Spawn(id string, cmd *exec.Cmd, dir string) error {
+func (m *Manager) Spawn(ctx context.Context, id string, cmd *exec.Cmd, dir string, source session.Source) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -76,28 +67,37 @@ func (m *Manager) Spawn(id string, cmd *exec.Cmd, dir string) error {
 		Pty:     p,
 		Done:    make(chan struct{}),
 		dir:     dir,
+		source:  source,
 		started: now,
 	}
 
-	// Monitor process exit in the background.
 	go func() {
-		_ = cmd.Wait()
+		done := make(chan struct{})
+		go func() {
+			_ = cmd.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			if cmd.Process != nil {
+				_ = cmd.Process.Signal(syscall.SIGTERM)
+			}
+			<-done
+		}
 		close(sess.Done)
 	}()
 
 	m.sessions[id] = sess
 
-	meta := Metadata{
-		ID:        id,
-		PID:       cmd.Process.Pid,
-		Dir:       dir,
-		Source:    "managed",
-		CreatedAt: now,
-		Managed:   true,
-	}
-	if err := m.writeMetadata(meta); err != nil {
-		// Best-effort: session is running but metadata failed to persist.
-		return fmt.Errorf("write metadata: %w", err)
+	if err := m.writeMetadata(sess); err != nil {
+		delete(m.sessions, id)
+		if cmd.Process != nil {
+			_ = cmd.Process.Signal(syscall.SIGTERM)
+		}
+		<-sess.Done // Wait for process exit before closing PTY.
+		_ = p.Close()
+		return fmt.Errorf("persist metadata: %w", err)
 	}
 
 	return nil
@@ -113,17 +113,12 @@ func (m *Manager) Get(id string) (*ManagedSession, bool) {
 
 // Stop sends SIGTERM to the session's process, closes the PTY,
 // removes it from the map, and deletes the metadata file.
-func (m *Manager) Stop(id string) error {
-	m.mu.Lock()
-	sess, ok := m.sessions[id]
-	if !ok {
-		m.mu.Unlock()
-		return fmt.Errorf("session %q not found", id)
+func (m *Manager) Stop(_ context.Context, id string) error {
+	sess, err := m.remove(id)
+	if err != nil {
+		return err
 	}
-	delete(m.sessions, id)
-	m.mu.Unlock()
 
-	// Signal the process to exit.
 	if sess.Cmd.Process != nil {
 		_ = sess.Cmd.Process.Signal(syscall.SIGTERM)
 	}
@@ -134,28 +129,35 @@ func (m *Manager) Stop(id string) error {
 	return nil
 }
 
-// List returns the IDs of all active managed sessions.
-func (m *Manager) List() []string {
+func (m *Manager) remove(id string) (*ManagedSession, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	ids := make([]string, 0, len(m.sessions))
-	for id := range m.sessions {
-		ids = append(ids, id)
+	sess, ok := m.sessions[id]
+	if !ok {
+		return nil, fmt.Errorf("session %q not found", id)
 	}
-	return ids
+	delete(m.sessions, id)
+	return sess, nil
 }
 
-func (m *Manager) writeMetadata(meta Metadata) error {
+func (m *Manager) writeMetadata(sess *ManagedSession) error {
+	if err := os.MkdirAll(m.stateDir, 0o755); err != nil {
+		return fmt.Errorf("create state dir: %w", err)
+	}
+	meta := session.ManagedMeta{
+		ID:        sess.ID,
+		PID:       sess.Cmd.Process.Pid,
+		Dir:       sess.dir,
+		Source:    sess.source,
+		CreatedAt: sess.started,
+		Managed:   true,
+	}
 	data, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal metadata: %w", err)
 	}
-	path := filepath.Join(m.stateDir, meta.ID+".json")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return fmt.Errorf("write %s: %w", path, err)
-	}
-	return nil
+	path := filepath.Join(m.stateDir, sess.ID+".json")
+	return os.WriteFile(path, data, 0o644)
 }
 
 func (m *Manager) removeMetadata(id string) error {

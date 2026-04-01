@@ -15,11 +15,11 @@ func TestManagedSource_Scan(t *testing.T) {
 	t.Run("returns stopped session for dead PID", func(t *testing.T) {
 		dir := t.TempDir()
 
-		meta := managedMeta{
+		meta := session.ManagedMeta{
 			ID:        "test-session-1",
 			PID:       99999999,
 			Dir:       "/home/user/project",
-			Source:    string(session.SourceNative),
+			Source:    session.SourceNative,
 			CreatedAt: time.Now().Add(-5 * time.Minute),
 			Managed:   true,
 		}
@@ -82,7 +82,7 @@ func TestManagedSource_Scan(t *testing.T) {
 	t.Run("defaults empty source to native", func(t *testing.T) {
 		dir := t.TempDir()
 
-		meta := managedMeta{
+		meta := session.ManagedMeta{
 			ID:        "no-source-session",
 			PID:       99999999,
 			Dir:       "/home/user/project",

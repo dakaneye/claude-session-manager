@@ -14,17 +14,26 @@ const (
 type Status string
 
 const (
-	StatusRunning   Status = "running"
-	StatusIdle      Status = "idle"
-	StatusSuccess   Status = "success"
-	StatusFailed    Status = "failed"
-	StatusBlocked   Status = "blocked"
-	StatusSpeccing  Status = "speccing"
-	StatusReady     Status = "ready"
-	StatusStopped   Status = "stopped"
-	StatusExecuting Status = "executing"
-	StatusShipping  Status = "shipping"
+	StatusRunning  Status = "running"
+	StatusIdle     Status = "idle"
+	StatusSuccess  Status = "success"
+	StatusFailed   Status = "failed"
+	StatusBlocked  Status = "blocked"
+	StatusSpeccing Status = "speccing"
+	StatusReady    Status = "ready"
+	StatusStopped  Status = "stopped"
 )
+
+// ManagedMeta is the on-disk JSON representation of a cs-managed session.
+// Written by the PTY manager, read by the scanner's ManagedSource.
+type ManagedMeta struct {
+	ID        string    `json:"id"`
+	PID       int       `json:"pid"`
+	Dir       string    `json:"dir"`
+	Source    Source    `json:"source"`
+	CreatedAt time.Time `json:"created_at"`
+	Managed   bool      `json:"managed"`
+}
 
 // Health is a traffic-light indicator for session health.
 type Health string

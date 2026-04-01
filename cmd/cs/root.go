@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 	ptyPkg "github.com/dakaneye/claude-session-manager/internal/pty"
@@ -20,8 +19,10 @@ func newRootCommand() *cobra.Command {
 		Short: "Manage multiple Claude Code sessions",
 		Long:  "TUI + CLI for managing interactive and autonomous Claude Code sessions.",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			home, _ := os.UserHomeDir()
-			stateDir := filepath.Join(home, ".claude", "cs-sessions")
+			stateDir, err := session.DefaultStateDir()
+			if err != nil {
+				return err
+			}
 			ptyMgr := ptyPkg.NewManager(stateDir)
 
 			sc := buildScanner()
@@ -42,7 +43,6 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newCleanCommand())
 	cmd.AddCommand(newNewCommand())
 	cmd.AddCommand(newVersionCommand())
-	cmd.AddCommand(newAttachCommand())
 	cmd.AddCommand(newResumeCommand())
 	cmd.AddCommand(newSandboxCommand())
 
@@ -79,11 +79,12 @@ func resolveSession(query string) (*session.Session, []session.Session, error) {
 func buildScanner() *scanner.Scanner {
 	home, _ := os.UserHomeDir()
 	cwd, _ := os.Getwd()
+	stateDir, _ := session.DefaultStateDir()
 
 	return &scanner.Scanner{
 		Sources: []scanner.SessionSource{
 			&scanner.ManagedSource{
-				StateDir: filepath.Join(home, ".claude", "cs-sessions"),
+				StateDir: stateDir,
 			},
 			&scanner.SandboxSource{
 				RepoPaths: []string{cwd},

@@ -96,3 +96,45 @@ func TestDeduplicateByPID(t *testing.T) {
 		t.Error("sandbox session should be preserved")
 	}
 }
+
+func TestDeduplicateByPID_MergesHealthFromNative(t *testing.T) {
+	native := session.Session{
+		ID:      "native-1",
+		PID:     5678,
+		Managed: false,
+		Source:  session.SourceNative,
+		Health:  session.HealthYellow,
+		LogPath: "/path/to/log.jsonl",
+		Diagnostics: []session.Diagnostic{
+			{Signal: "repeated-command", Severity: session.SeverityWarning, Detail: "test"},
+		},
+	}
+	managed := session.Session{
+		ID:      "managed-1",
+		PID:     5678,
+		Managed: true,
+		Source:  session.SourceNative,
+		Health:  session.HealthGreen,
+	}
+
+	// Managed comes after native — should replace but merge health.
+	result := deduplicateByPID([]session.Session{native, managed})
+
+	if len(result) != 1 {
+		t.Fatalf("len = %d, want 1", len(result))
+	}
+
+	s := result[0]
+	if !s.Managed {
+		t.Error("result should be managed session")
+	}
+	if s.Health != session.HealthYellow {
+		t.Errorf("Health = %s, want yellow (merged from native)", s.Health)
+	}
+	if s.LogPath != "/path/to/log.jsonl" {
+		t.Errorf("LogPath = %q, want merged from native", s.LogPath)
+	}
+	if len(s.Diagnostics) != 1 {
+		t.Errorf("Diagnostics len = %d, want 1 (merged from native)", len(s.Diagnostics))
+	}
+}

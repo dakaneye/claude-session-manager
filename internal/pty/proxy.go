@@ -1,6 +1,7 @@
 package pty
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -45,15 +46,16 @@ func (p *Proxy) Run() error {
 	}
 	defer func() { _ = term.Restore(fd, oldState) }()
 
-	// Sync initial terminal size to PTY.
 	if err := p.syncTermSize(fd); err != nil {
 		return fmt.Errorf("sync terminal size: %w", err)
 	}
 
-	// Propagate terminal resize via SIGWINCH.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGWINCH)
-	defer signal.Stop(sigCh)
+	defer func() {
+		signal.Stop(sigCh)
+		close(sigCh)
+	}()
 
 	go func() {
 		for range sigCh {
@@ -61,14 +63,12 @@ func (p *Proxy) Run() error {
 		}
 	}()
 
-	// Copy PTY output to stdout.
 	ptyDone := make(chan error, 1)
 	go func() {
 		_, err := io.Copy(os.Stdout, p.sess.Pty)
 		ptyDone <- err
 	}()
 
-	// Read stdin, scanning for detach byte.
 	stdinDone := make(chan error, 1)
 	go func() {
 		buf := make([]byte, 256)
@@ -91,17 +91,16 @@ func (p *Proxy) Run() error {
 		}
 	}()
 
-	// Wait for any exit condition.
 	select {
 	case <-p.sess.Done:
 		return io.EOF
 	case err := <-ptyDone:
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("pty read: %w", err)
 		}
 		return nil
 	case err := <-stdinDone:
-		if err != nil && err != io.EOF {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("stdin read: %w", err)
 		}
 		// Detach or stdin closed.

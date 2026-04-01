@@ -9,12 +9,13 @@ Go TUI + CLI (`cs`) for managing multiple Claude Code sessions with health heuri
 ```
 cmd/cs/           Cobra CLI entry point + subcommands
 internal/
-  session/        Shared types (Session, Diagnostic, Source, Status, Health)
+  session/        Shared types, process lifecycle, path helpers
   scanner/        Session discovery, log parsing, health heuristics
+  pty/            PTY lifecycle: spawn, attach/detach proxy, resize, cleanup
   tui/            Bubbletea v2 TUI (styles, keys, sessions list, detail, statusbar, app)
 ```
 
-Scanner layer has no TUI imports. TUI consumes scanner output.
+Scanner layer has no TUI or PTY imports. TUI consumes scanner and PTY output.
 
 ## Quality Gates
 
@@ -45,10 +46,12 @@ make verify    # build + vet + lint (0 issues) + test -race + tidy
 
 ## Dependencies
 
-3 direct dependencies:
+5 direct dependencies:
 - `charm.land/bubbletea/v2` — TUI framework
 - `charm.land/lipgloss/v2` — Terminal styling
+- `github.com/charmbracelet/x/xpty` — PTY allocation
 - `github.com/spf13/cobra` — CLI framework
+- `golang.org/x/term` — Terminal raw mode and size
 
 ## Commit Format
 
