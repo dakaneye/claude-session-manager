@@ -66,3 +66,33 @@ func TestScanner_Scan(t *testing.T) {
 		}
 	})
 }
+
+func TestDeduplicateByPID(t *testing.T) {
+	sessions := []session.Session{
+		{ID: "native-1", PID: 1234, Managed: false, Source: session.SourceNative},
+		{ID: "managed-1", PID: 1234, Managed: true, Source: session.SourceNative},
+		{ID: "sandbox-1", PID: 0, Managed: false, Source: session.SourceSandbox},
+	}
+
+	result := deduplicateByPID(sessions)
+
+	if len(result) != 2 {
+		t.Fatalf("len = %d, want 2", len(result))
+	}
+
+	for _, s := range result {
+		if s.PID == 1234 && !s.Managed {
+			t.Error("PID 1234 should be managed session, got discovered")
+		}
+	}
+
+	found := false
+	for _, s := range result {
+		if s.ID == "sandbox-1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("sandbox session should be preserved")
+	}
+}
