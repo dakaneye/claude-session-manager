@@ -49,10 +49,14 @@ func printTable(cmd *cobra.Command, sessions []session.Session) error {
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "HEALTH\tNAME\tSOURCE\tSTATUS\tDIR")
+	fmt.Fprintln(w, "HEALTH\tNAME\tSOURCE\tSTATUS\tMANAGED\tDIR")
 	for _, s := range sessions {
 		dot := healthSymbol(s.Health)
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", dot, s.DisplayName(), s.Source, s.Status, s.Dir)
+		managed := ""
+		if s.Managed {
+			managed = "yes"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", dot, s.DisplayName(), s.Source, s.Status, managed, s.Dir)
 	}
 	return w.Flush()
 }

@@ -53,7 +53,7 @@ func (sb *statusBar) helpView() string {
 		"  " + statusBarKeyStyle.Render("↑/↓ or j/k") + "  Navigate sessions",
 		"  " + statusBarKeyStyle.Render("enter") + "      Toggle peek (conversation view)",
 		"  " + statusBarKeyStyle.Render("n") + "          New session",
-		"  " + statusBarKeyStyle.Render("a") + "          Attach to native session",
+		"  " + statusBarKeyStyle.Render("a") + "          Attach to managed session / resume stopped session",
 		"  " + statusBarKeyStyle.Render("s") + "          Stop selected session",
 		"  " + statusBarKeyStyle.Render("l") + "          Label selected session",
 		"  " + statusBarKeyStyle.Render("?") + "          Toggle this help",
