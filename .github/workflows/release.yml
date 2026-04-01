@@ -22,6 +22,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          install-only: true
+
       - uses: dakaneye/hookshot/release-pilot@1b43157bc205516bdb653ebeccdb7ef7079bb19d
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
