@@ -7,6 +7,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.2
 	github.com/charmbracelet/x/xpty v0.1.3
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/term v0.41.0
 )
 
 require (
