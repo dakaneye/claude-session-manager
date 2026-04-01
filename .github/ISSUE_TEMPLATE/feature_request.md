@@ -1,19 +1,19 @@
 ---
-name: Feature Request
-about: Suggest a feature for cs
+name: Feature request
+about: Suggest an idea for this project
 title: ''
 labels: enhancement
 assignees: ''
 ---
 
-**Problem**
-What problem does this solve? What's frustrating about the current behavior?
+**Is your feature request related to a problem?**
+A clear description of the problem.
 
-**Proposed solution**
-How should it work?
+**Describe the solution you'd like**
+A clear description of what you want to happen.
 
 **Alternatives considered**
-Other approaches you've thought about.
+Any alternative solutions or features you've considered.
 
 **Additional context**
-Any other context, mockups, or examples.
+Any other context about the feature request.
