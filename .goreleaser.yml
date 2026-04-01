@@ -25,22 +25,10 @@ checksum:
   name_template: checksums.txt
 
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
-      - "^chore:"
-  groups:
-    - title: Features
-      regexp: "^feat"
-    - title: Bug Fixes
-      regexp: "^fix"
+  skip: true
 
 release:
   github:
     owner: dakaneye
     name: claude-session-manager
-  draft: false
-  prerelease: auto
+  disable: true
