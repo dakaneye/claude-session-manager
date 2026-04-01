@@ -3,25 +3,14 @@ package scanner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/dakaneye/claude-session-manager/internal/session"
 )
-
-// managedMeta mirrors the on-disk JSON for cs-managed sessions.
-type managedMeta struct {
-	ID        string    `json:"id"`
-	PID       int       `json:"pid"`
-	Dir       string    `json:"dir"`
-	Source    string    `json:"source"`
-	Stage     string    `json:"stage,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	Managed   bool      `json:"managed"`
-}
 
 // ManagedSource discovers sessions launched and owned by cs.
 type ManagedSource struct {
@@ -31,7 +20,7 @@ type ManagedSource struct {
 func (m *ManagedSource) Scan(_ context.Context) ([]session.Session, error) {
 	entries, err := os.ReadDir(m.StateDir)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("read managed sessions dir: %w", err)
@@ -48,7 +37,7 @@ func (m *ManagedSource) Scan(_ context.Context) ([]session.Session, error) {
 			continue
 		}
 
-		var meta managedMeta
+		var meta session.ManagedMeta
 		if err := json.Unmarshal(data, &meta); err != nil {
 			continue
 		}
@@ -59,7 +48,7 @@ func (m *ManagedSource) Scan(_ context.Context) ([]session.Session, error) {
 			status = session.StatusRunning
 		}
 
-		source := session.Source(meta.Source)
+		source := meta.Source
 		if source == "" {
 			source = session.SourceNative
 		}

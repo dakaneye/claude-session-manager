@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
-	"syscall"
 
 	"github.com/dakaneye/claude-session-manager/internal/session"
 	"github.com/spf13/cobra"
@@ -21,30 +19,27 @@ func newStopCommand() *cobra.Command {
 				return err
 			}
 
-			if sess.Managed {
-				home, _ := os.UserHomeDir()
-				metaFile := filepath.Join(home, ".claude", "cs-sessions", sess.ID+".json")
-				_ = os.Remove(metaFile)
-			}
-
-			if sess.Source == session.SourceNative && sess.PID > 0 {
-				proc, err := os.FindProcess(sess.PID)
-				if err != nil {
-					return fmt.Errorf("find process %d: %w", sess.PID, err)
-				}
-				if err := proc.Signal(syscall.SIGTERM); err != nil {
-					return fmt.Errorf("signal process %d: %w", sess.PID, err)
-				}
-				cmd.Printf("Sent SIGTERM to PID %d (%s)\n", sess.PID, sess.ID)
-				return nil
-			}
-
 			if sess.Source == session.SourceSandbox {
 				cmd.PrintErrln("Sandbox sessions should be stopped with: claude-sandbox stop " + sess.ID)
 				return nil
 			}
 
-			return fmt.Errorf("cannot stop session %s (source: %s)", sess.ID, sess.Source)
+			if sess.PID <= 0 {
+				return fmt.Errorf("cannot stop session %s (no PID)", sess.ID)
+			}
+
+			if err := session.StopProcess(sess.PID); err != nil {
+				return fmt.Errorf("stop session %s: %w", sess.ID, err)
+			}
+
+			if sess.Managed {
+				if metaPath, err := session.ManagedMetaPath(sess.ID); err == nil {
+					_ = os.Remove(metaPath)
+				}
+			}
+
+			cmd.Printf("Stopped %s (PID %d)\n", sess.DisplayName(), sess.PID)
+			return nil
 		},
 	}
 }

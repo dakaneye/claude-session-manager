@@ -1,12 +1,15 @@
 package pty
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/dakaneye/claude-session-manager/internal/session"
 )
 
 func TestManager_Spawn(t *testing.T) {
@@ -14,11 +17,11 @@ func TestManager_Spawn(t *testing.T) {
 	m := NewManager(stateDir)
 
 	cmd := exec.Command("echo", "hello")
-	err := m.Spawn("test-1", cmd, "/tmp")
+	err := m.Spawn(t.Context(), "test-1", cmd, "/tmp", session.SourceNative)
 	if err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
-	t.Cleanup(func() { _ = m.Stop("test-1") })
+	t.Cleanup(func() { _ = m.Stop(context.Background(), "test-1") })
 
 	t.Run("session is retrievable", func(t *testing.T) {
 		sess, ok := m.Get("test-1")
@@ -39,7 +42,7 @@ func TestManager_Spawn(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read metadata: %v", err)
 		}
-		var meta Metadata
+		var meta session.ManagedMeta
 		if err := json.Unmarshal(data, &meta); err != nil {
 			t.Fatalf("unmarshal metadata: %v", err)
 		}
@@ -59,7 +62,7 @@ func TestManager_Spawn(t *testing.T) {
 
 	t.Run("duplicate ID rejected", func(t *testing.T) {
 		cmd := exec.Command("echo", "dup")
-		err := m.Spawn("test-1", cmd, "/tmp")
+		err := m.Spawn(t.Context(), "test-1", cmd, "/tmp", session.SourceNative)
 		if err == nil {
 			t.Fatal("expected error for duplicate ID")
 		}
@@ -71,11 +74,11 @@ func TestManager_SpawnAndWaitForExit(t *testing.T) {
 	m := NewManager(stateDir)
 
 	cmd := exec.Command("echo", "done")
-	err := m.Spawn("exit-test", cmd, "/tmp")
+	err := m.Spawn(t.Context(), "exit-test", cmd, "/tmp", session.SourceNative)
 	if err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
-	t.Cleanup(func() { _ = m.Stop("exit-test") })
+	t.Cleanup(func() { _ = m.Stop(context.Background(), "exit-test") })
 
 	sess, ok := m.Get("exit-test")
 	if !ok {
@@ -95,12 +98,12 @@ func TestManager_Stop(t *testing.T) {
 	m := NewManager(stateDir)
 
 	cmd := exec.Command("sleep", "60")
-	err := m.Spawn("stop-test", cmd, "/tmp")
+	err := m.Spawn(t.Context(), "stop-test", cmd, "/tmp", session.SourceNative)
 	if err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
 
-	err = m.Stop("stop-test")
+	err = m.Stop(t.Context(), "stop-test")
 	if err != nil {
 		t.Fatalf("Stop: %v", err)
 	}
@@ -120,47 +123,9 @@ func TestManager_Stop(t *testing.T) {
 	})
 
 	t.Run("stop nonexistent returns error", func(t *testing.T) {
-		err := m.Stop("nonexistent")
+		err := m.Stop(t.Context(), "nonexistent")
 		if err == nil {
 			t.Error("expected error for nonexistent session")
-		}
-	})
-}
-
-func TestManager_List(t *testing.T) {
-	stateDir := t.TempDir()
-	m := NewManager(stateDir)
-
-	t.Run("empty manager", func(t *testing.T) {
-		ids := m.List()
-		if len(ids) != 0 {
-			t.Errorf("List() = %v, want empty", ids)
-		}
-	})
-
-	cmd1 := exec.Command("sleep", "60")
-	if err := m.Spawn("list-1", cmd1, "/tmp"); err != nil {
-		t.Fatalf("Spawn list-1: %v", err)
-	}
-	t.Cleanup(func() { _ = m.Stop("list-1") })
-
-	cmd2 := exec.Command("sleep", "60")
-	if err := m.Spawn("list-2", cmd2, "/tmp"); err != nil {
-		t.Fatalf("Spawn list-2: %v", err)
-	}
-	t.Cleanup(func() { _ = m.Stop("list-2") })
-
-	t.Run("lists all sessions", func(t *testing.T) {
-		ids := m.List()
-		if len(ids) != 2 {
-			t.Fatalf("List() len = %d, want 2", len(ids))
-		}
-		found := map[string]bool{}
-		for _, id := range ids {
-			found[id] = true
-		}
-		if !found["list-1"] || !found["list-2"] {
-			t.Errorf("List() = %v, want list-1 and list-2", ids)
 		}
 	})
 }

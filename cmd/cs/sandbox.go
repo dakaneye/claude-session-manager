@@ -15,15 +15,15 @@ func newSandboxCommand() *cobra.Command {
 		Short: "Manage sandbox session lifecycle",
 	}
 
-	cmd.AddCommand(newSandboxExecuteCommand())
-	cmd.AddCommand(newSandboxShipCommand())
+	cmd.AddCommand(newSandboxStageCommand("execute"))
+	cmd.AddCommand(newSandboxStageCommand("ship"))
 	return cmd
 }
 
-func newSandboxExecuteCommand() *cobra.Command {
+func newSandboxStageCommand(stage string) *cobra.Command {
 	return &cobra.Command{
-		Use:   "execute [session]",
-		Short: "Advance a sandbox session to the execute stage",
+		Use:   stage + " [session]",
+		Short: "Advance a sandbox session to the " + stage + " stage",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sess, _, err := resolveSession(args[0])
@@ -35,45 +35,15 @@ func newSandboxExecuteCommand() *cobra.Command {
 				return fmt.Errorf("session %s is not a sandbox session", sess.ID)
 			}
 
-			c := exec.Command("claude-sandbox", "execute", "--session", sess.ID)
+			c := exec.Command("claude-sandbox", stage, "--session", sess.ID)
 			c.Dir = sess.Dir
 			c.Stdin = os.Stdin
 			c.Stdout = os.Stdout
 			c.Stderr = os.Stderr
 
-			cmd.Printf("Starting execute for %s...\n", sess.DisplayName())
+			cmd.Printf("Starting %s for %s...\n", stage, sess.DisplayName())
 			if err := c.Run(); err != nil {
-				return fmt.Errorf("execute sandbox session: %w", err)
-			}
-			return nil
-		},
-	}
-}
-
-func newSandboxShipCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "ship [session]",
-		Short: "Advance a sandbox session to the ship stage",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			sess, _, err := resolveSession(args[0])
-			if err != nil {
-				return err
-			}
-
-			if sess.Source != session.SourceSandbox {
-				return fmt.Errorf("session %s is not a sandbox session", sess.ID)
-			}
-
-			c := exec.Command("claude-sandbox", "ship", "--session", sess.ID)
-			c.Dir = sess.Dir
-			c.Stdin = os.Stdin
-			c.Stdout = os.Stdout
-			c.Stderr = os.Stderr
-
-			cmd.Printf("Starting ship for %s...\n", sess.DisplayName())
-			if err := c.Run(); err != nil {
-				return fmt.Errorf("ship sandbox session: %w", err)
+				return fmt.Errorf("%s sandbox session: %w", stage, err)
 			}
 			return nil
 		},

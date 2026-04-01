@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -364,21 +362,28 @@ func (a *App) executeStop() {
 	if sel == nil {
 		return
 	}
-	if sel.Source == session.SourceNative && sel.PID > 0 {
-		proc, err := os.FindProcess(sel.PID)
-		if err != nil {
-			a.setFlash("Process not found")
-			return
-		}
-		if err := proc.Signal(syscall.SIGTERM); err != nil {
+
+	// Use the PTY manager for managed sessions.
+	if sel.Managed && a.ptyMgr != nil {
+		if err := a.ptyMgr.Stop(context.Background(), sel.ID); err != nil {
 			a.setFlash("Stop error: " + err.Error())
 			return
 		}
-		// Remove the session file so it disappears from the list.
-		home, _ := os.UserHomeDir()
-		pidFile := filepath.Join(home, ".claude", "sessions", fmt.Sprintf("%d.json", sel.PID))
-		_ = os.Remove(pidFile)
-		a.setFlash("Stopped PID " + fmt.Sprint(sel.PID))
+		a.setFlash("Stopped " + sel.DisplayName())
+		return
+	}
+
+	if sel.PID > 0 {
+		if err := session.StopProcess(sel.PID); err != nil {
+			a.setFlash("Stop error: " + err.Error())
+			return
+		}
+		if sel.Managed {
+			if metaPath, err := session.ManagedMetaPath(sel.ID); err == nil {
+				_ = os.Remove(metaPath)
+			}
+		}
+		a.setFlash("Stopped " + sel.DisplayName())
 	} else {
 		a.setFlash("Stop not supported for " + string(sel.Source) + " sessions")
 	}
@@ -404,13 +409,18 @@ func (a *App) launchClaude() tea.Cmd {
 	cmd := exec.Command("claude")
 	cmd.Dir = dir
 
-	if err := a.ptyMgr.Spawn(id, cmd, dir); err != nil {
+	if err := a.ptyMgr.Spawn(context.Background(), id, cmd, dir, session.SourceNative); err != nil {
 		return func() tea.Msg {
 			return execFinishedMsg{err: err}
 		}
 	}
 
-	sess, _ := a.ptyMgr.Get(id)
+	sess, ok := a.ptyMgr.Get(id)
+	if !ok {
+		return func() tea.Msg {
+			return execFinishedMsg{err: fmt.Errorf("session %s not found after spawn", id)}
+		}
+	}
 	return a.attachSession(sess)
 }
 
@@ -423,7 +433,7 @@ func (a *App) executeResume() {
 	if a.ptyMgr != nil {
 		cmd := exec.Command("claude", "--resume", sel.ID)
 		cmd.Dir = sel.Dir
-		if err := a.ptyMgr.Spawn(sel.ID, cmd, sel.Dir); err != nil {
+		if err := a.ptyMgr.Spawn(context.Background(), sel.ID, cmd, sel.Dir, sel.Source); err != nil {
 			a.setFlash("Resume error: " + err.Error())
 			return
 		}
@@ -457,7 +467,7 @@ func (a *App) executeNextStage() {
 	cmd := exec.Command(cmdName, args...)
 	cmd.Dir = sel.Dir
 
-	if err := a.ptyMgr.Spawn(id, cmd, sel.Dir); err != nil {
+	if err := a.ptyMgr.Spawn(context.Background(), id, cmd, sel.Dir, sel.Source); err != nil {
 		a.setFlash("Stage error: " + err.Error())
 		return
 	}
