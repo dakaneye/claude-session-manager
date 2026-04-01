@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"github.com/dakaneye/claude-session-manager/internal/session"
@@ -18,6 +19,12 @@ func newStopCommand() *cobra.Command {
 			sess, _, err := resolveSession(args[0])
 			if err != nil {
 				return err
+			}
+
+			if sess.Managed {
+				home, _ := os.UserHomeDir()
+				metaFile := filepath.Join(home, ".claude", "cs-sessions", sess.ID+".json")
+				_ = os.Remove(metaFile)
 			}
 
 			if sess.Source == session.SourceNative && sess.PID > 0 {
