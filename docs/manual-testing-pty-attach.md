@@ -15,6 +15,18 @@ make install   # builds + installs to ~/go/bin/cs (already on PATH)
 cs
 ```
 
+## Detach chord
+
+Default is `Ctrl+]`. Override via `CS_DETACH_BYTE` if your terminal eats it
+(Warp intercepts `Ctrl+]` for its own bindings, for example):
+
+```bash
+CS_DETACH_BYTE=ctrl-q cs    # or ^Q, 0x11, 17
+```
+
+The inline hint printed at attach time reflects whatever chord is active, and
+the check below verifies it.
+
 ## Status legend
 - `[x]` Verified passing on this branch
 - `[ ]` Not yet verified
@@ -36,8 +48,8 @@ From TUI, press `n`, pick type, enter directory, press `enter`.
 
 - [x] `claude` launches full-screen in raw terminal mode
 - [x] Typing a prompt gets a real response from claude
-- [x] `Ctrl+]` detaches back to TUI with **no screen artifacts** (fixed — was an
-      alt-screen layering bug)
+- [x] Configured detach chord returns to TUI with **no screen artifacts**
+      (fixed — was an alt-screen layering bug)
 - [ ] Detach hint: a line "[cs] Attached — press Ctrl+] to detach" prints briefly
       before claude's alt-screen takes over, and the terminal window title
       shows "cs attached — Ctrl+] to detach" while attached
@@ -105,3 +117,4 @@ Skip if `claude-sandbox` is not installed.
 |---|---|---|
 | `Ctrl+C` behavior | `[~]` | Passed through to claude, not bound to detach |
 | Warp terminal artifacts | `[!]` | Suspected Warp-specific alt-screen handling; not reproduced in iTerm2 |
+| Warp intercepts `Ctrl+]` | `[~]` | Warp grabs `Ctrl+]` before the proxy sees it. Use `CS_DETACH_BYTE=ctrl-q` (or any chord Warp doesn't claim) as a workaround |

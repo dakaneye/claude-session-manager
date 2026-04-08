@@ -16,6 +16,49 @@ func TestDetachByte(t *testing.T) {
 	}
 }
 
+func TestDetachByteFromEnv(t *testing.T) {
+	tests := []struct {
+		env      string
+		wantByte byte
+		wantName string
+	}{
+		// Default.
+		{"", 0x1d, "Ctrl+]"},
+
+		// ctrl-X / ctrl+X (case-insensitive).
+		{"ctrl-q", 0x11, "Ctrl+Q"},
+		{"ctrl+Q", 0x11, "Ctrl+Q"},
+		{"CTRL-C", 0x03, "Ctrl+C"},
+		{`ctrl-\`, 0x1c, `Ctrl+\`},
+		{"ctrl-]", 0x1d, "Ctrl+]"},
+
+		// Caret notation.
+		{"^Q", 0x11, "Ctrl+Q"},
+		{"^]", 0x1d, "Ctrl+]"},
+
+		// Numeric.
+		{"0x11", 0x11, "byte 0x11"},
+		{"17", 0x11, "byte 0x11"},
+		{"0X1D", 0x1d, "byte 0x1d"},
+
+		// Garbage falls back to default with a diagnostic name.
+		{"banana", 0x1d, "Ctrl+] (unparseable CS_DETACH_BYTE)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.env, func(t *testing.T) {
+			t.Setenv("CS_DETACH_BYTE", tt.env)
+			b, name := detachByteFromEnv()
+			if b != tt.wantByte {
+				t.Errorf("byte = %#x, want %#x", b, tt.wantByte)
+			}
+			if name != tt.wantName {
+				t.Errorf("name = %q, want %q", name, tt.wantName)
+			}
+		})
+	}
+}
+
 func TestDetachByteDetection(t *testing.T) {
 	tests := []struct {
 		name     string
