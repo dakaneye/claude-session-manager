@@ -21,7 +21,19 @@ const (
 	StatusBlocked  Status = "blocked"
 	StatusSpeccing Status = "speccing"
 	StatusReady    Status = "ready"
+	StatusStopped  Status = "stopped"
 )
+
+// ManagedMeta is the on-disk JSON representation of a cs-managed session.
+// Written by the PTY manager, read by the scanner's ManagedSource.
+type ManagedMeta struct {
+	ID        string    `json:"id"`
+	PID       int       `json:"pid"`
+	Dir       string    `json:"dir"`
+	Source    Source    `json:"source"`
+	CreatedAt time.Time `json:"created_at"`
+	Managed   bool      `json:"managed"`
+}
 
 // Health is a traffic-light indicator for session health.
 type Health string
@@ -62,6 +74,7 @@ type Session struct {
 	Diagnostics  []Diagnostic `json:"diagnostics,omitempty"`
 	PID          int          `json:"pid,omitempty"`
 	LogPath      string       `json:"log_path,omitempty"`
+	Managed      bool         `json:"managed,omitempty"`
 }
 
 // DisplayName returns the session's name, falling back to its ID.

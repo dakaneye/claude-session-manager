@@ -101,6 +101,9 @@ func (sl *sessionList) renderSession(idx int, s session.Session) []string {
 		displayStatus = "idle"
 	}
 	meta := fmt.Sprintf("%s · %s", s.Source, displayStatus)
+	if s.Managed {
+		meta = "[cs] " + meta
+	}
 	if s.Task != "" {
 		meta += " · " + s.Task
 	}

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	tea "charm.land/bubbletea/v2"
+	ptyPkg "github.com/dakaneye/claude-session-manager/internal/pty"
 	"github.com/dakaneye/claude-session-manager/internal/scanner"
 	"github.com/dakaneye/claude-session-manager/internal/session"
 	"github.com/dakaneye/claude-session-manager/internal/tui"
@@ -18,8 +19,14 @@ func newRootCommand() *cobra.Command {
 		Short: "Manage multiple Claude Code sessions",
 		Long:  "TUI + CLI for managing interactive and autonomous Claude Code sessions.",
 		RunE: func(_ *cobra.Command, _ []string) error {
+			stateDir, err := session.DefaultStateDir()
+			if err != nil {
+				return err
+			}
+			ptyMgr := ptyPkg.NewManager(stateDir)
+
 			sc := buildScanner()
-			app := tui.NewApp(sc)
+			app := tui.NewApp(sc, ptyMgr)
 			p := tea.NewProgram(app)
 			if _, err := p.Run(); err != nil {
 				return fmt.Errorf("run TUI: %w", err)
@@ -36,6 +43,8 @@ func newRootCommand() *cobra.Command {
 	cmd.AddCommand(newCleanCommand())
 	cmd.AddCommand(newNewCommand())
 	cmd.AddCommand(newVersionCommand())
+	cmd.AddCommand(newResumeCommand())
+	cmd.AddCommand(newSandboxCommand())
 
 	return cmd
 }
@@ -70,9 +79,13 @@ func resolveSession(query string) (*session.Session, []session.Session, error) {
 func buildScanner() *scanner.Scanner {
 	home, _ := os.UserHomeDir()
 	cwd, _ := os.Getwd()
+	stateDir, _ := session.DefaultStateDir()
 
 	return &scanner.Scanner{
 		Sources: []scanner.SessionSource{
+			&scanner.ManagedSource{
+				StateDir: stateDir,
+			},
 			&scanner.SandboxSource{
 				RepoPaths: []string{cwd},
 			},

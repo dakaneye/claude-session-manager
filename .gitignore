@@ -4,3 +4,6 @@ dist/
 *.test
 *.out
 .DS_Store
+
+# claude-sandbox local state created during manual testing of sandbox sessions
+.claude-sandbox/

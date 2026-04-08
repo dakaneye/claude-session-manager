@@ -301,7 +301,7 @@ func TestStatusBar_RendersKeyBindings(t *testing.T) {
 
 	output := sb.View()
 
-	bindings := []string{"navigate", "peek", "new", "attach", "stop", "label", "help", "quit"}
+	bindings := []string{"navigate", "peek", "new", "attach", "stop/rm", "label", "help", "quit"}
 	for _, b := range bindings {
 		if !strings.Contains(output, b) {
 			t.Errorf("missing keybinding hint %q in status bar", b)
@@ -312,16 +312,15 @@ func TestStatusBar_RendersKeyBindings(t *testing.T) {
 func TestStatusBar_HelpViewShowsAllBindings(t *testing.T) {
 	sb := newStatusBar()
 	sb.SetWidth(100)
-	sb.ToggleHelp()
 
-	output := sb.View()
+	output := sb.HelpContent()
 
 	commands := []string{
 		"Navigate sessions",
 		"Toggle peek (conversation view)",
 		"New session",
-		"Attach to native session",
-		"Stop selected session",
+		"Attach to managed session / resume stopped session",
+		"Stop running / Remove stopped",
 		"Label selected session",
 		"Toggle this help",
 		"Quit",
@@ -366,7 +365,7 @@ func TestStatusBar_RenderFlash(t *testing.T) {
 // --- Full Layout Rendering ---
 
 func TestApp_FullRenderContainsSessions(t *testing.T) {
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	app.width = 120
 	app.height = 40
 
@@ -420,7 +419,7 @@ func TestApp_FullRenderContainsSessions(t *testing.T) {
 }
 
 func TestApp_RenderWithNoSessions(t *testing.T) {
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	app.width = 80
 	app.height = 24
 
@@ -436,7 +435,7 @@ func TestApp_RenderWithNoSessions(t *testing.T) {
 }
 
 func TestApp_RenderZeroSizeDoesNotPanic(t *testing.T) {
-	app := NewApp(nil)
+	app := NewApp(nil, nil)
 	// width/height are 0 by default; should return loading view.
 	view := app.View()
 	if view.Content != "Loading..." {

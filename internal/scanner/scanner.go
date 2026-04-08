@@ -29,6 +29,8 @@ func (s *Scanner) Scan(ctx context.Context) ([]session.Session, error) {
 		all = append(all, sessions...)
 	}
 
+	all = deduplicateByPID(all)
+
 	// Apply persisted labels.
 	applyLabels(all)
 
@@ -37,6 +39,42 @@ func (s *Scanner) Scan(ctx context.Context) ([]session.Session, error) {
 	})
 
 	return all, nil
+}
+
+// deduplicateByPID removes duplicate sessions by PID, preferring managed
+// sessions but merging health/log data from the native entry.
+func deduplicateByPID(sessions []session.Session) []session.Session {
+	seen := make(map[int]int) // PID -> index in result
+	var result []session.Session
+
+	for _, s := range sessions {
+		if s.PID <= 0 {
+			result = append(result, s)
+			continue
+		}
+		if idx, exists := seen[s.PID]; exists {
+			if s.Managed && !result[idx].Managed {
+				existing := result[idx]
+				result[idx] = s
+				// Merge health/log data from the native entry.
+				if result[idx].LogPath == "" {
+					result[idx].LogPath = existing.LogPath
+				}
+				if result[idx].Health == session.HealthGreen && existing.Health != session.HealthGreen {
+					result[idx].Health = existing.Health
+					result[idx].Diagnostics = existing.Diagnostics
+				}
+				if result[idx].LastActivity.IsZero() {
+					result[idx].LastActivity = existing.LastActivity
+				}
+			}
+			continue
+		}
+		seen[s.PID] = len(result)
+		result = append(result, s)
+	}
+
+	return result
 }
 
 // applyLabels reads session labels from ~/.claude/session-labels/ and sets Task.

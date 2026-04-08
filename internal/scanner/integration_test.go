@@ -153,3 +153,68 @@ func TestIntegration_FullScan(t *testing.T) {
 		}
 	})
 }
+
+func TestIntegration_ManagedSessionDeduplication(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set up a native session.
+	claudeDir := filepath.Join(tmpDir, "claude")
+	nativeSessDir := filepath.Join(claudeDir, "sessions")
+	if err := os.MkdirAll(nativeSessDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nativeJSON := map[string]any{
+		"pid":       88888888,
+		"sessionId": "dedup-native",
+		"cwd":       "/tmp/dedup-project",
+		"startedAt": 1774912561112,
+	}
+	data, _ := json.MarshalIndent(nativeJSON, "", "  ")
+	if err := os.WriteFile(filepath.Join(nativeSessDir, "88888888.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set up a managed session with the same PID.
+	managedDir := filepath.Join(tmpDir, "cs-sessions")
+	if err := os.MkdirAll(managedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	managedJSON := map[string]any{
+		"id":         "dedup-managed",
+		"pid":        88888888,
+		"dir":        "/tmp/dedup-project",
+		"source":     "native",
+		"created_at": "2026-03-31T10:00:00Z",
+		"managed":    true,
+	}
+	mdata, _ := json.MarshalIndent(managedJSON, "", "  ")
+	if err := os.WriteFile(filepath.Join(managedDir, "dedup-managed.json"), mdata, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sc := &Scanner{
+		Sources: []SessionSource{
+			&ManagedSource{StateDir: managedDir},
+			&NativeSource{ClaudeDir: claudeDir},
+		},
+	}
+
+	sessions, err := sc.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+
+	pidCount := 0
+	for _, s := range sessions {
+		if s.PID == 88888888 {
+			pidCount++
+			if !s.Managed {
+				t.Error("deduped session should be the managed one")
+			}
+		}
+	}
+
+	if pidCount != 1 {
+		t.Errorf("PID 88888888 appears %d times, want 1", pidCount)
+	}
+}
