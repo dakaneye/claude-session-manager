@@ -16,7 +16,9 @@ func TestManager_Spawn(t *testing.T) {
 	stateDir := t.TempDir()
 	m := NewManager(stateDir)
 
-	cmd := exec.Command("echo", "hello")
+	// Long-running command so the session doesn't auto-cleanup
+	// before the subtests inspect manager state.
+	cmd := exec.Command("sleep", "30")
 	err := m.Spawn(t.Context(), "test-1", cmd, "/tmp", session.SourceNative)
 	if err != nil {
 		t.Fatalf("Spawn: %v", err)
@@ -115,10 +117,12 @@ func TestManager_Stop(t *testing.T) {
 		}
 	})
 
-	t.Run("metadata file removed", func(t *testing.T) {
+	t.Run("metadata file preserved after stop", func(t *testing.T) {
+		// Stop kills the process but keeps the metadata so the session
+		// remains visible as "stopped" and can be resumed.
 		metaPath := filepath.Join(stateDir, "stop-test.json")
-		if _, err := os.Stat(metaPath); !os.IsNotExist(err) {
-			t.Errorf("metadata file still exists after Stop")
+		if _, err := os.Stat(metaPath); err != nil {
+			t.Errorf("metadata file should persist after Stop: %v", err)
 		}
 	})
 
@@ -136,5 +140,75 @@ func TestManager_Get_Nonexistent(t *testing.T) {
 	_, ok := m.Get("nonexistent")
 	if ok {
 		t.Error("Get returned true for nonexistent session")
+	}
+}
+
+func TestManager_AutoCleanupOnProcessExit(t *testing.T) {
+	stateDir := t.TempDir()
+	m := NewManager(stateDir)
+
+	cmd := exec.Command("echo", "quick")
+	if err := m.Spawn(t.Context(), "auto-cleanup", cmd, "/tmp", session.SourceNative); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+
+	sess, ok := m.Get("auto-cleanup")
+	if !ok {
+		t.Fatal("session not in map immediately after Spawn")
+	}
+
+	select {
+	case <-sess.Done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for process exit")
+	}
+
+	// Give the cleanup goroutine a moment to run after Done closes.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := m.Get("auto-cleanup"); !ok {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Run("session removed from map after exit", func(t *testing.T) {
+		if _, ok := m.Get("auto-cleanup"); ok {
+			t.Error("session still in map after process exit")
+		}
+	})
+
+	t.Run("metadata file preserved after natural exit", func(t *testing.T) {
+		// Process exiting on its own leaves the session as "stopped"
+		// so the user can resume it. Explicit removal requires a
+		// separate call.
+		metaPath := filepath.Join(stateDir, "auto-cleanup.json")
+		if _, err := os.Stat(metaPath); err != nil {
+			t.Errorf("metadata file should persist after process exit: %v", err)
+		}
+	})
+}
+
+func TestManager_RemoveMetadata(t *testing.T) {
+	stateDir := t.TempDir()
+	m := NewManager(stateDir)
+
+	// Simulate an orphaned metadata file from a previous cs instance.
+	metaPath := filepath.Join(stateDir, "orphan.json")
+	if err := os.WriteFile(metaPath, []byte(`{"id":"orphan"}`), 0o644); err != nil {
+		t.Fatalf("seed orphan metadata: %v", err)
+	}
+
+	if err := m.RemoveMetadata("orphan"); err != nil {
+		t.Fatalf("RemoveMetadata: %v", err)
+	}
+
+	if _, err := os.Stat(metaPath); !os.IsNotExist(err) {
+		t.Error("orphan metadata file still present after RemoveMetadata")
+	}
+
+	// Idempotent: removing nonexistent should not error.
+	if err := m.RemoveMetadata("nonexistent"); err != nil {
+		t.Errorf("RemoveMetadata on nonexistent: %v", err)
 	}
 }

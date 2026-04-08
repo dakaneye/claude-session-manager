@@ -85,6 +85,13 @@ func (m *Manager) Spawn(ctx context.Context, id string, cmd *exec.Cmd, dir strin
 			}
 			<-done
 		}
+		// Process exited: close PTY and remove from in-memory map.
+		// Metadata stays on disk so the session remains visible as
+		// "stopped" and the user can resume it via `claude --resume`.
+		_ = p.Close()
+		m.mu.Lock()
+		delete(m.sessions, id)
+		m.mu.Unlock()
 		close(sess.Done)
 	}()
 
@@ -111,8 +118,10 @@ func (m *Manager) Get(id string) (*ManagedSession, bool) {
 	return sess, ok
 }
 
-// Stop sends SIGTERM to the session's process, closes the PTY,
-// removes it from the map, and deletes the metadata file.
+// Stop sends SIGTERM to the session's process, closes the PTY, and
+// removes it from the in-memory map. The metadata file is preserved
+// so the session remains visible as "stopped" and can be resumed.
+// Returns an error only if the session is unknown to this Manager.
 func (m *Manager) Stop(_ context.Context, id string) error {
 	sess, err := m.remove(id)
 	if err != nil {
@@ -124,7 +133,6 @@ func (m *Manager) Stop(_ context.Context, id string) error {
 	}
 
 	_ = sess.Pty.Close()
-	_ = m.removeMetadata(id)
 
 	return nil
 }
@@ -138,6 +146,13 @@ func (m *Manager) remove(id string) (*ManagedSession, error) {
 	}
 	delete(m.sessions, id)
 	return sess, nil
+}
+
+// RemoveMetadata deletes the on-disk metadata file for id.
+// Used to clean up orphaned sessions discovered from disk that
+// this Manager doesn't own in memory.
+func (m *Manager) RemoveMetadata(id string) error {
+	return m.removeMetadata(id)
 }
 
 func (m *Manager) writeMetadata(sess *ManagedSession) error {
