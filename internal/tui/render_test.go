@@ -301,7 +301,7 @@ func TestStatusBar_RendersKeyBindings(t *testing.T) {
 
 	output := sb.View()
 
-	bindings := []string{"navigate", "peek", "new", "attach", "stop", "label", "help", "quit"}
+	bindings := []string{"navigate", "peek", "new", "attach", "stop/rm", "label", "help", "quit"}
 	for _, b := range bindings {
 		if !strings.Contains(output, b) {
 			t.Errorf("missing keybinding hint %q in status bar", b)
@@ -312,16 +312,15 @@ func TestStatusBar_RendersKeyBindings(t *testing.T) {
 func TestStatusBar_HelpViewShowsAllBindings(t *testing.T) {
 	sb := newStatusBar()
 	sb.SetWidth(100)
-	sb.ToggleHelp()
 
-	output := sb.View()
+	output := sb.HelpContent()
 
 	commands := []string{
 		"Navigate sessions",
 		"Toggle peek (conversation view)",
 		"New session",
 		"Attach to managed session / resume stopped session",
-		"Stop selected session",
+		"Stop running / Remove stopped",
 		"Label selected session",
 		"Toggle this help",
 		"Quit",

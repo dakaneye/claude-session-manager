@@ -26,5 +26,5 @@ verify: build vet lint test tidy
 clean:
 	rm -rf bin/
 
-install: build
-	cp bin/$(BINARY) $(GOPATH)/bin/$(BINARY)
+install:
+	go install $(LDFLAGS) ./cmd/cs

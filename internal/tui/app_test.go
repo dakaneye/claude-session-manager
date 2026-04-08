@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	ptyPkg "github.com/dakaneye/claude-session-manager/internal/pty"
 	"github.com/dakaneye/claude-session-manager/internal/session"
 )
 
@@ -225,12 +226,16 @@ func TestStatusBar_HelpToggle(t *testing.T) {
 	sb := newStatusBar()
 	sb.SetWidth(80)
 
-	normal := sb.View()
+	if sb.showHelp {
+		t.Error("showHelp should start false")
+	}
 	sb.ToggleHelp()
-	help := sb.View()
-
-	if normal == help {
-		t.Error("help view should differ from normal view")
+	if !sb.showHelp {
+		t.Error("ToggleHelp should set showHelp to true")
+	}
+	sb.ToggleHelp()
+	if sb.showHelp {
+		t.Error("ToggleHelp should set showHelp back to false")
 	}
 }
 
@@ -349,6 +354,112 @@ func TestApp_ConfirmStopExecutes(t *testing.T) {
 	}
 }
 
+func TestApp_StopRunningManagedKeepsMetadata(t *testing.T) {
+	// Orphaned running managed session (no ptyMgr ownership).
+	// Stop should SIGTERM but leave metadata (it would show as
+	// stopped on next scan, allowing resume).
+	app := NewApp(nil, nil)
+	app.sessions.sessions = []session.Session{
+		{ID: "running-1", Name: "running", Source: session.SourceNative, Managed: true, Status: session.StatusRunning, PID: 0},
+	}
+
+	updated, _ := app.Update(keyPress('s'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress('y'))
+	app = updated.(*App)
+
+	if strings.Contains(app.flashMsg, "Removed") {
+		t.Errorf("flash = %q, running session should not be 'Removed'", app.flashMsg)
+	}
+}
+
+func TestApp_StopStoppedManagedRemoves(t *testing.T) {
+	// Create a stopped managed session with a fake metadata file,
+	// then verify executeStop removes the metadata.
+	tmpDir := t.TempDir()
+	metaPath := tmpDir + "/stopped-1.json"
+	if err := os.WriteFile(metaPath, []byte(`{"id":"stopped-1"}`), 0o644); err != nil {
+		t.Fatalf("seed metadata: %v", err)
+	}
+
+	mgr := ptyPkg.NewManager(tmpDir)
+	app := NewApp(nil, mgr)
+	app.sessions.sessions = []session.Session{
+		{ID: "stopped-1", Name: "stopped", Source: session.SourceNative, Managed: true, Status: session.StatusStopped},
+	}
+
+	updated, _ := app.Update(keyPress('s'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress('y'))
+	app = updated.(*App)
+
+	if !strings.Contains(app.flashMsg, "Removed") {
+		t.Errorf("flash = %q, want to contain 'Removed'", app.flashMsg)
+	}
+	if _, err := os.Stat(metaPath); !os.IsNotExist(err) {
+		t.Errorf("metadata file should be removed, got: %v", err)
+	}
+}
+
+func TestApp_StopConfirmPromptSandboxCleanup(t *testing.T) {
+	// A non-managed sandbox session in a terminal state (failed, ready,
+	// etc.) should prompt with "Clean X?" since we'll delegate to
+	// `claude-sandbox clean`.
+	cases := []session.Status{
+		session.StatusFailed,
+		session.StatusReady,
+		session.StatusSuccess,
+		session.StatusStopped,
+	}
+	for _, status := range cases {
+		t.Run(string(status), func(t *testing.T) {
+			app := NewApp(nil, nil)
+			app.sessions.sessions = []session.Session{
+				{ID: "sb-1", Name: "sb", Source: session.SourceSandbox, Status: status, Dir: "/tmp/fake"},
+			}
+			updated, _ := app.Update(keyPress('s'))
+			app = updated.(*App)
+			prompt := app.confirmPrompt()
+			if !strings.Contains(prompt, "Clean") {
+				t.Errorf("prompt = %q, want to contain 'Clean' for sandbox %s", prompt, status)
+			}
+		})
+	}
+}
+
+func TestApp_SandboxIsActive(t *testing.T) {
+	if !sandboxIsActive(session.StatusSpeccing) {
+		t.Error("speccing should be active")
+	}
+	if !sandboxIsActive(session.StatusRunning) {
+		t.Error("running should be active")
+	}
+	if sandboxIsActive(session.StatusFailed) {
+		t.Error("failed should not be active")
+	}
+	if sandboxIsActive(session.StatusReady) {
+		t.Error("ready should not be active")
+	}
+	if sandboxIsActive(session.StatusSuccess) {
+		t.Error("success should not be active")
+	}
+}
+
+func TestApp_StopConfirmPromptDiffersForStopped(t *testing.T) {
+	app := NewApp(nil, nil)
+	app.sessions.sessions = []session.Session{
+		{ID: "stopped-1", Name: "stopped", Source: session.SourceNative, Managed: true, Status: session.StatusStopped},
+	}
+
+	updated, _ := app.Update(keyPress('s'))
+	app = updated.(*App)
+
+	prompt := app.confirmPrompt()
+	if !strings.Contains(prompt, "Remove") {
+		t.Errorf("prompt = %q, want to contain 'Remove' for stopped session", prompt)
+	}
+}
+
 func TestApp_ConfirmResumePrompt(t *testing.T) {
 	app := NewApp(nil, nil)
 	app.sessions.sessions = []session.Session{
@@ -461,6 +572,181 @@ func TestApp_LabelInput(t *testing.T) {
 	}
 }
 
+func TestApp_NewSessionPicker_NativeFlow(t *testing.T) {
+	app := NewApp(nil, nil)
+
+	// Press `n` to enter new session type picker.
+	updated, _ := app.Update(keyPress('n'))
+	app = updated.(*App)
+	if app.mode != modeNewType {
+		t.Fatalf("after n: mode = %d, want modeNewType", app.mode)
+	}
+
+	// Pick native with `n`.
+	updated, _ = app.Update(keyPress('n'))
+	app = updated.(*App)
+	if app.mode != modeNewDir {
+		t.Fatalf("after native pick: mode = %d, want modeNewDir", app.mode)
+	}
+	if app.newSessionKind != newSessionNative {
+		t.Errorf("newSessionKind = %d, want newSessionNative", app.newSessionKind)
+	}
+	if app.newSessionDir == "" {
+		t.Error("newSessionDir should be pre-populated with cwd")
+	}
+}
+
+func TestApp_NewSessionPicker_SandboxFlow(t *testing.T) {
+	app := NewApp(nil, nil)
+
+	updated, _ := app.Update(keyPress('n'))
+	app = updated.(*App)
+
+	updated, _ = app.Update(keyPress('s'))
+	app = updated.(*App)
+	if app.mode != modeNewDir {
+		t.Fatalf("after sandbox pick: mode = %d, want modeNewDir", app.mode)
+	}
+	if app.newSessionKind != newSessionSandbox {
+		t.Errorf("newSessionKind = %d, want newSessionSandbox", app.newSessionKind)
+	}
+}
+
+func TestApp_NewSessionPicker_EscapeCancels(t *testing.T) {
+	app := NewApp(nil, nil)
+
+	updated, _ := app.Update(keyPress('n'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress(tea.KeyEscape))
+	app = updated.(*App)
+	if app.mode != modeNormal {
+		t.Errorf("after esc from type picker: mode = %d, want modeNormal", app.mode)
+	}
+}
+
+func TestApp_NewSessionPicker_SandboxRequiresGitRepo(t *testing.T) {
+	// A directory that exists but is NOT inside a git repo should be
+	// rejected when the user picks sandbox, without reaching the spawn path.
+	nonGitDir := t.TempDir()
+
+	app := NewApp(nil, nil)
+
+	// n → s (sandbox) → modeNewDir
+	updated, _ := app.Update(keyPress('n'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress('s'))
+	app = updated.(*App)
+
+	app.newSessionDir = nonGitDir
+	updated, _ = app.Update(keyPress(tea.KeyEnter))
+	app = updated.(*App)
+
+	if app.mode != modeNormal {
+		t.Errorf("mode = %d, want modeNormal after rejection", app.mode)
+	}
+	if !strings.Contains(app.flashMsg, "git repo") {
+		t.Errorf("flashMsg = %q, want to contain 'git repo'", app.flashMsg)
+	}
+}
+
+func TestApp_NewSessionPicker_SandboxAcceptsGitRepo(t *testing.T) {
+	// A directory inside a git repo should pass validation (we stop
+	// before the spawn to avoid needing a real PTY manager).
+	gitRoot := t.TempDir()
+	if err := os.Mkdir(filepath.Join(gitRoot, ".git"), 0o755); err != nil {
+		t.Fatalf("create .git: %v", err)
+	}
+	subdir := filepath.Join(gitRoot, "sub")
+	if err := os.Mkdir(subdir, 0o755); err != nil {
+		t.Fatalf("create subdir: %v", err)
+	}
+
+	if !isGitRepo(subdir) {
+		t.Error("isGitRepo(subdir) = false, want true (should walk up to .git)")
+	}
+}
+
+func TestApp_NewSessionPicker_DirInvalidRejected(t *testing.T) {
+	app := NewApp(nil, nil)
+	// Nil ptyMgr is fine — the validation happens before spawn.
+
+	// Navigate: n → native → modeNewDir
+	updated, _ := app.Update(keyPress('n'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress('n'))
+	app = updated.(*App)
+
+	// Replace default cwd with a nonexistent path.
+	app.newSessionDir = "/definitely/not/a/real/directory/xyz"
+	updated, _ = app.Update(keyPress(tea.KeyEnter))
+	app = updated.(*App)
+
+	if app.mode != modeNormal {
+		t.Errorf("mode = %d, want modeNormal after rejection", app.mode)
+	}
+	if !strings.Contains(app.flashMsg, "Invalid directory") {
+		t.Errorf("flashMsg = %q, want to contain 'Invalid directory'", app.flashMsg)
+	}
+}
+
+func TestApp_NewSessionPicker_DirEmptyRejected(t *testing.T) {
+	app := NewApp(nil, nil)
+
+	updated, _ := app.Update(keyPress('n'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress('n'))
+	app = updated.(*App)
+
+	// Clear the pre-populated cwd.
+	app.newSessionDir = ""
+	updated, _ = app.Update(keyPress(tea.KeyEnter))
+	app = updated.(*App)
+
+	if app.mode != modeNormal {
+		t.Errorf("mode = %d, want modeNormal after empty rejection", app.mode)
+	}
+	if !strings.Contains(app.flashMsg, "Directory required") {
+		t.Errorf("flashMsg = %q, want to contain 'Directory required'", app.flashMsg)
+	}
+}
+
+func TestApp_NewSessionPicker_DirEscapeCancels(t *testing.T) {
+	app := NewApp(nil, nil)
+
+	updated, _ := app.Update(keyPress('n'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress('n'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress(tea.KeyEscape))
+	app = updated.(*App)
+	if app.mode != modeNormal {
+		t.Errorf("mode = %d, want modeNormal after esc from dir input", app.mode)
+	}
+	if app.newSessionDir != "" {
+		t.Errorf("newSessionDir = %q, want empty after cancel", app.newSessionDir)
+	}
+}
+
+func TestApp_NewSessionPicker_DirEditable(t *testing.T) {
+	app := NewApp(nil, nil)
+
+	updated, _ := app.Update(keyPress('n'))
+	app = updated.(*App)
+	updated, _ = app.Update(keyPress('n'))
+	app = updated.(*App)
+
+	// Backspace should remove characters from the pre-populated cwd.
+	original := app.newSessionDir
+	if original == "" {
+		t.Fatal("expected pre-populated cwd, got empty")
+	}
+	updated, _ = app.Update(keyPress(tea.KeyBackspace))
+	app = updated.(*App)
+	if len(app.newSessionDir) != len(original)-1 {
+		t.Errorf("after backspace: len = %d, want %d", len(app.newSessionDir), len(original)-1)
+	}
+}
+
 func TestApp_WindowSizeMsg(t *testing.T) {
 	app := NewApp(nil, nil)
 
@@ -501,9 +787,14 @@ func TestApp_FlashMessageExpiry(t *testing.T) {
 func TestApp_ExecFinishedMsg(t *testing.T) {
 	app := NewApp(nil, nil)
 
+	// After tea.Exec returns, the TUI must force a clear-screen so the
+	// alt-screen buffer doesn't retain stale content from the proxy.
 	_, cmd := app.Update(execFinishedMsg{err: nil})
-	if cmd != nil {
-		t.Error("execFinishedMsg should return nil cmd")
+	if cmd == nil {
+		t.Fatal("execFinishedMsg should return a clear-screen cmd, got nil")
+	}
+	if cmd() == nil {
+		t.Error("clear-screen cmd produced nil msg")
 	}
 }
 

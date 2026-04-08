@@ -24,16 +24,12 @@ func (sb *statusBar) ToggleHelp() {
 }
 
 func (sb *statusBar) View() string {
-	if sb.showHelp {
-		return sb.helpView()
-	}
-
 	bindings := []struct{ key, desc string }{
 		{"↑↓", "navigate"},
 		{"enter", "peek"},
 		{"n", "new"},
 		{"a", "attach"},
-		{"s", "stop"},
+		{"s", "stop/rm"},
 		{"l", "label"},
 		{"?", "help"},
 		{"q", "quit"},
@@ -48,13 +44,15 @@ func (sb *statusBar) View() string {
 	return lipgloss.NewStyle().Width(sb.width).Render(line)
 }
 
-func (sb *statusBar) helpView() string {
+// HelpContent returns the multi-line help text rendered in the body area
+// when help mode is active.
+func (sb *statusBar) HelpContent() string {
 	help := []string{
 		"  " + statusBarKeyStyle.Render("↑/↓ or j/k") + "  Navigate sessions",
 		"  " + statusBarKeyStyle.Render("enter") + "      Toggle peek (conversation view)",
 		"  " + statusBarKeyStyle.Render("n") + "          New session",
 		"  " + statusBarKeyStyle.Render("a") + "          Attach to managed session / resume stopped session",
-		"  " + statusBarKeyStyle.Render("s") + "          Stop selected session",
+		"  " + statusBarKeyStyle.Render("s") + "          Stop running / Remove stopped",
 		"  " + statusBarKeyStyle.Render("l") + "          Label selected session",
 		"  " + statusBarKeyStyle.Render("?") + "          Toggle this help",
 		"  " + statusBarKeyStyle.Render("q") + "          Quit (sessions keep running)",
