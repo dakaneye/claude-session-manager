@@ -16,6 +16,40 @@ func TestDetachByte(t *testing.T) {
 	}
 }
 
+func TestKittyEscapeForDetachByte(t *testing.T) {
+	tests := []struct {
+		name string
+		b    byte
+		want string
+	}{
+		{"Ctrl+]", 0x1d, "\x1b[93;5u"},
+		{"Ctrl+\\", 0x1c, "\x1b[92;5u"},
+		{"Ctrl+[", 0x1b, "\x1b[91;5u"},
+		{"Ctrl+^", 0x1e, "\x1b[94;5u"},
+		{"Ctrl+_", 0x1f, "\x1b[95;5u"},
+		{"Ctrl+A", 0x01, "\x1b[97;5u"},
+		{"Ctrl+Q", 0x11, "\x1b[113;5u"},
+		{"Ctrl+Z", 0x1a, "\x1b[122;5u"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := string(kittyEscapeForDetachByte(tt.b))
+			if got != tt.want {
+				t.Errorf("kittyEscapeForDetachByte(%#x) = %q, want %q", tt.b, got, tt.want)
+			}
+		})
+	}
+
+	t.Run("non-control returns nil", func(t *testing.T) {
+		if kittyEscapeForDetachByte('a') != nil {
+			t.Error("expected nil for non-control byte")
+		}
+		if kittyEscapeForDetachByte(0x00) != nil {
+			t.Error("expected nil for 0x00")
+		}
+	})
+}
+
 func TestDetachByteFromEnv(t *testing.T) {
 	tests := []struct {
 		env      string

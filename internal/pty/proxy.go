@@ -1,6 +1,7 @@
 package pty
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/muesli/cancelreader"
 	"golang.org/x/term"
@@ -71,6 +73,32 @@ func detachByteFromEnv() (byte, string) {
 	return DefaultDetachByte, "Ctrl+] (unparseable CS_DETACH_BYTE)"
 }
 
+// kittyEscapeForDetachByte returns the Kitty keyboard protocol byte
+// sequence corresponding to a control byte (0x01..0x1f). For Ctrl+]
+// (0x1d) this is "\x1b[93;5u" because Kitty encodes a key event as
+// CSI <unicode>;<modifier> u where unicode is the base printable form
+// of the key (']' = 93) and modifier 5 means Ctrl. Returns nil for
+// bytes that aren't standard control codes.
+//
+// We need this because bubbletea v2 enables the Kitty keyboard protocol
+// on the terminal and doesn't disable it before tea.Exec hands control
+// to our proxy, so terminals that support the protocol (e.g. Warp) send
+// the multi-byte encoded form instead of the legacy single byte.
+func kittyEscapeForDetachByte(b byte) []byte {
+	var codepoint int
+	switch {
+	case b >= 0x01 && b <= 0x1a:
+		// Ctrl+a..Ctrl+z → 'a'..'z' (97..122).
+		codepoint = int(b) + 0x60
+	case b >= 0x1b && b <= 0x1f:
+		// Ctrl+[ \ ] ^ _ → '[' '\' ']' '^' '_' (91..95).
+		codepoint = int(b) + 0x40
+	default:
+		return nil
+	}
+	return fmt.Appendf(nil, "\x1b[%d;5u", codepoint)
+}
+
 // ctrlByte converts a single letter or punctuation character to its
 // Ctrl-combination byte value. Returns (0, "") for characters that don't
 // have a meaningful control code.
@@ -129,16 +157,22 @@ const ansiExitAltScreen = "\x1b[?1049l"
 // place as a best-effort hint for terminals that honor it.
 const ansiResetTitle = "\x1b]2;cs\x07"
 
-// Run blocks until the user detaches (Ctrl+]) or the session exits.
-// It puts the terminal in raw mode, syncs terminal size to the PTY,
-// and copies I/O bidirectionally.
+// Run blocks until the user detaches (the configured detach chord) or
+// the session exits. It puts the terminal in raw mode, syncs terminal
+// size to the PTY, and copies I/O bidirectionally.
 //
-// Cleanup ordering is critical: on return we must (1) cancel the I/O
-// readers to unblock their goroutines, (2) wait for those goroutines to
-// actually exit, and (3) close the readers so their kqueue/epoll fds are
-// released. If we skip step 3, bubbletea's own cancelreader created on
-// os.Stdin after tea.Exec returns will fight a zombie registration and
-// input stops reaching the parent TUI.
+// Stdin is read directly with os.Stdin.Read (no cancelreader). An earlier
+// version wrapped stdin in cancelreader to avoid leaking the read goroutine
+// after detach, but cancelreader's kqueue path on macOS doesn't reliably
+// wake on tty input — it broke detach detection in Warp. The PTY reader
+// (whose fd is a pty master, not a tty) keeps cancelreader so we can
+// unblock io.Copy on detach without waiting for claude to write more bytes.
+//
+// The stdin goroutine is allowed to leak when the session ends via
+// p.sess.Done — Manager.Spawn's cleanup goroutine closes the PTY before
+// closing Done, so the leaked goroutine's next forward to the PTY fails
+// and it exits. Cost: at most one keystroke gets eaten after a session
+// exits while the user is back in the TUI.
 func (p *Proxy) Run() error {
 	fd := int(os.Stdin.Fd())
 
@@ -147,27 +181,20 @@ func (p *Proxy) Run() error {
 		return fmt.Errorf("make terminal raw: %w", err)
 	}
 
-	stdinReader, err := cancelreader.NewReader(os.Stdin)
-	if err != nil {
-		_ = term.Restore(fd, oldState)
-		return fmt.Errorf("create cancelable stdin reader: %w", err)
-	}
-
 	ptyReader, err := cancelreader.NewReader(p.sess.Pty)
 	if err != nil {
-		_ = stdinReader.Close()
 		_ = term.Restore(fd, oldState)
 		return fmt.Errorf("create cancelable pty reader: %w", err)
 	}
 
 	if err := p.syncTermSize(fd); err != nil {
 		_ = ptyReader.Close()
-		_ = stdinReader.Close()
 		_ = term.Restore(fd, oldState)
 		return fmt.Errorf("sync terminal size: %w", err)
 	}
 
 	detachByte, detachName := detachByteFromEnv()
+	kittyDetach := kittyEscapeForDetachByte(detachByte)
 
 	// Show the detach chord briefly (main screen + window title) before
 	// claude's alt-screen obscures the inline hint. The title persists
@@ -187,31 +214,56 @@ func (p *Proxy) Run() error {
 		}
 	}()
 
-	var ioWG sync.WaitGroup
-	ioWG.Add(2)
-
+	// PTY → stdout. We track this goroutine in a WaitGroup so the defer
+	// can wait for it after canceling the PTY reader.
+	var ptyWG sync.WaitGroup
+	ptyWG.Add(1)
 	ptyDone := make(chan error, 1)
 	go func() {
-		defer ioWG.Done()
+		defer ptyWG.Done()
 		_, err := io.Copy(os.Stdout, ptyReader)
 		ptyDone <- err
 	}()
 
+	// Optional file-based debug log of every stdin read. Enable with
+	// CS_PROXY_DEBUG=/tmp/cs-proxy.log (or any writable path). Useful for
+	// answering "did the detach chord byte actually reach the proxy".
+	dbg := openProxyDebugLog()
+	defer dbg.close()
+
+	// Stdin → PTY, watching for the detach chord. Direct os.Stdin.Read;
+	// see Run godoc for why this leaks on session exit by design.
+	//
+	// We match BOTH the legacy single-byte form (0x1d for Ctrl+]) and the
+	// Kitty keyboard protocol multi-byte form (\x1b[93;5u for Ctrl+])
+	// because bubbletea v2 enables Kitty keyboard on startup and doesn't
+	// disable it on releaseTerminal, so when our proxy reads stdin a
+	// Kitty-aware terminal (e.g. Warp) sends the encoded form.
 	stdinDone := make(chan error, 1)
 	go func() {
-		defer ioWG.Done()
 		buf := make([]byte, 256)
 		for {
-			n, err := stdinReader.Read(buf)
+			n, err := os.Stdin.Read(buf)
+			dbg.logRead(n, err, buf)
 			if err != nil {
 				stdinDone <- err
 				return
 			}
+			detached := false
 			for i := range n {
 				if buf[i] == detachByte {
-					stdinDone <- nil
-					return
+					dbg.log("detach byte matched (legacy 0x%02x), exiting stdin loop", detachByte)
+					detached = true
+					break
 				}
+			}
+			if !detached && len(kittyDetach) > 0 && bytes.Contains(buf[:n], kittyDetach) {
+				dbg.log("detach byte matched (kitty %q), exiting stdin loop", string(kittyDetach))
+				detached = true
+			}
+			if detached {
+				stdinDone <- nil
+				return
 			}
 			if _, err := p.sess.Pty.Write(buf[:n]); err != nil {
 				stdinDone <- err
@@ -221,14 +273,11 @@ func (p *Proxy) Run() error {
 	}()
 
 	defer func() {
-		// Cancel readers so blocked I/O goroutines unblock...
-		stdinReader.Cancel()
+		// Unblock the PTY reader (the stdin goroutine either already
+		// exited via the detach byte path or is allowed to leak — see
+		// godoc) and wait for it.
 		ptyReader.Cancel()
-		// ...then wait for them to actually exit before closing.
-		ioWG.Wait()
-		// Close readers to release kqueue/epoll fds registered on the
-		// underlying file descriptors.
-		_ = stdinReader.Close()
+		ptyWG.Wait()
 		_ = ptyReader.Close()
 		// Stop the SIGWINCH handler and let its goroutine drain.
 		signal.Stop(sigCh)
@@ -251,10 +300,10 @@ func (p *Proxy) Run() error {
 		}
 		return nil
 	case err := <-stdinDone:
-		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, cancelreader.ErrCanceled) {
+		if err != nil && !errors.Is(err, io.EOF) {
 			return fmt.Errorf("stdin read: %w", err)
 		}
-		// Detach, stdin closed, or canceled.
+		// Detach or stdin closed.
 		return nil
 	}
 }
@@ -268,4 +317,56 @@ func (p *Proxy) syncTermSize(fd int) error {
 		return fmt.Errorf("resize pty: %w", err)
 	}
 	return nil
+}
+
+// proxyDebug is an opt-in file-based logger for the stdin read loop.
+// It exists so we can answer "did the detach chord byte actually reach
+// the proxy?" without polluting the attached terminal with stderr writes.
+type proxyDebug struct {
+	f *os.File
+}
+
+func openProxyDebugLog() *proxyDebug {
+	path := os.Getenv("CS_PROXY_DEBUG")
+	if path == "" {
+		return &proxyDebug{}
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return &proxyDebug{}
+	}
+	d := &proxyDebug{f: f}
+	d.log("proxy debug log opened (pid=%d)", os.Getpid())
+	return d
+}
+
+func (d *proxyDebug) close() {
+	if d.f == nil {
+		return
+	}
+	d.log("proxy debug log closing")
+	_ = d.f.Close()
+}
+
+func (d *proxyDebug) log(format string, args ...any) {
+	if d.f == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(d.f, "%s "+format+"\n",
+		append([]any{time.Now().Format("15:04:05.000")}, args...)...)
+}
+
+func (d *proxyDebug) logRead(n int, err error, buf []byte) {
+	if d.f == nil {
+		return
+	}
+	hex := make([]string, 0, n)
+	for i := 0; i < n && i < 16; i++ {
+		hex = append(hex, fmt.Sprintf("%02x", buf[i]))
+	}
+	suffix := ""
+	if n > 16 {
+		suffix = fmt.Sprintf(" ...(+%d)", n-16)
+	}
+	d.log("stdin read: n=%d err=%v bytes=[%s]%s", n, err, strings.Join(hex, " "), suffix)
 }
