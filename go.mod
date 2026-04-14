@@ -8,7 +8,7 @@ require (
 	github.com/charmbracelet/x/xpty v0.1.3
 	github.com/muesli/cancelreader v0.2.2
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/term v0.41.0
+	golang.org/x/term v0.42.0
 )
 
 require (
