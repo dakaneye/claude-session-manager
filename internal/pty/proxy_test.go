@@ -166,7 +166,9 @@ func TestProxy_PTYReadOutput(t *testing.T) {
 	stateDir := t.TempDir()
 	m := NewManager(stateDir)
 
-	cmd := exec.Command("echo", "proxy-read-test")
+	// Keep the process alive after printing: when it exits, Spawn's reaper
+	// closes the PTY and drops the session, racing the Get and read below.
+	cmd := exec.Command("sh", "-c", "echo proxy-read-test; exec cat")
 	if err := m.Spawn(t.Context(), "pty-read", cmd, "/tmp", session.SourceNative); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
